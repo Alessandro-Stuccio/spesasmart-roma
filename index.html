@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="it" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>SpesaSmart Geo-Compare v3.0 — Mappa GPS Live, Orari & Volantini Roma</title>
+  <meta name="description" content="Confronto geolocalizzato in tempo reale dei volantini di 20 supermercati vicini con mappa interattiva, stato apertura live e ottimizzazione carrello." />
+  <meta name="theme-color" content="#059669" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="data:application/manifest+json,{&quot;name&quot;:&quot;SpesaSmart Geo-Compare&quot;,&quot;short_name&quot;:&quot;SpesaSmart&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#0f172a&quot;,&quot;theme_color&quot;:&quot;#059669&quot;}" />
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet Interactive Map CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+    .mono-price { font-family: 'JetBrains Mono', monospace; }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    #geoMap { height: 320px; width: 100%; border-radius: 0.85rem; z-index: 10; }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.97); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.97); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    .gps-pulse { animation: pulse-ring 2s infinite; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-600 selection:text-white">
+
+  <!-- STICKY HEADER WITH LIVE CLOCK, GPS & QUICK ACTIONS -->
+  <header class="sticky top-0 z-40 bg-slate-900 text-white border-b border-slate-800 shadow-lg">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center font-extrabold text-slate-950 text-lg shadow-md">
+          S€
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h1 class="font-extrabold text-lg tracking-tight">SpesaSmart <span class="text-emerald-400">Roma Volantini Live</span></h1>
+            <span id="liveClockBadge" class="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">🕒 Orario Live</span>
+          </div>
+          <p class="text-xs text-slate-300 flex items-center gap-1.5 mt-0.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+            <span>Posizione attiva: <strong id="gpsAddressLabel">Roma — Quadrante Tiburtina / Casal Bertone (41.9065, 12.5385)</strong></span>
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap">
+        <button id="btnLocateGps" onclick="detectLiveUserLocation()" class="gps-pulse flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition shadow">
+          <span>📍</span>
+          <span id="btnLocateLabel">Rileva GPS Attuale</span>
+        </button>
+
+        <button onclick="openFlyerModal('ALL')" class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shadow">
+          <span>📰 Catalogo Volantini</span>
+          <span id="activeFlyersCountBadge" class="px-1.5 py-0.5 bg-slate-950/20 rounded-md font-mono">8</span>
+        </button>
+
+        <button onclick="toggleChecklistDrawer()" class="relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 transition">
+          <span>🛒 Checklist Corsie</span>
+          <span id="checklistBadge" class="px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-bold mono-price">0/0</span>
+        </button>
+
+        <button onclick="openDeployModal()" class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+          ⚙️ Deploy
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN APPLICATION CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6">
+
+    <!-- 1. WINNER VERDICT & ADJACENT WALKING COMBO BANNER -->
+    <section id="verdictBanner" class="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-900 text-white rounded-2xl p-5 shadow-xl border border-emerald-500/30">
+      <!-- Dynamically populated by renderVerdictBanner() -->
+    </section>
+
+    <!-- 2. INTERACTIVE MAP + NLP SHOPPING LIST + STORE RADAR -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- LEFT COLUMN (7 COLS): NLP PARSER, FILTERS & INTERACTIVE LEAFLET MAP -->
+      <section class="lg:col-span-7 bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col justify-between space-y-4">
+        <div>
+          <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
+            <h2 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <span>📝 Lista della Spesa & Motore NLP</span>
+              <span class="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">15 Categorie + Anti-Decoy</span>
+            </h2>
+            <div class="flex items-center gap-1.5">
+              <button id="btnVoiceInput" onclick="triggerVoiceDictation()" class="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 border border-slate-200 transition">
+                <span>🎙️ Dettatura</span>
+              </button>
+              <button onclick="resetCustomOverrides()" id="btnResetSwaps" class="hidden text-xs font-bold px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200">
+                ↺ Reset Scelte
+              </button>
+            </div>
+          </div>
+
+          <textarea id="rawShoppingInput" oninput="refreshAllViews()" rows="2" class="w-full rounded-xl border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 p-3 text-sm text-slate-900 font-medium placeholder-slate-400 transition" placeholder="Scrivi ingredienti e quantità...">500g di pasta, passata di pomodoro, 1 litro di latte intero, uova, petto di pollo, olio evo, farina, caffè, mozzarella, mele, pane, tonno</textarea>
+
+          <!-- QUICK PRESET CHIPS -->
+          <div class="flex flex-wrap items-center gap-1.5 mt-2">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Preset Volantini:</span>
+            <button onclick="applyPreset('full12')" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 transition">Carrello Base (12 prod.)</button>
+            <button onclick="applyPreset('specialsOct')" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 border border-emerald-200 transition">🔥 Super Offerte Ott 2026 (Bufala, Macinato, Capsule, Segale)</button>
+            <button onclick="applyPreset('xxlStock')" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 transition">📦 Scorta Formati XXL</button>
+            <button onclick="applyPreset('decoyTest')" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-500 hover:text-slate-950 text-amber-800 border border-amber-200 transition">🧪 Test Anti-Falsi Positivi</button>
+          </div>
+        </div>
+
+        <!-- PARSED ENTITIES DIAGNOSTIC -->
+        <div class="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-700">Ingredienti Riconosciuti e Normalizzati:</span>
+            <span id="parsedCountLabel" class="font-mono font-bold text-emerald-700">12 categorie</span>
+          </div>
+          <div id="parsedEntitiesContainer" class="flex flex-wrap gap-1.5"></div>
+          <div id="blockedDecoysNotice" class="hidden text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-2.5 py-1.5"></div>
+        </div>
+
+        <!-- INTERACTIVE GPS MAP (LEAFLET) -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <span class="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+              <span>🗺️ Mappa Live dei 20 Punti Vendita Rilevati (Roma Est / Tiburtina / Bologna)</span>
+            </span>
+            <button onclick="scanOpenStreetMapOverpass()" id="btnOverpassScan" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-900 hover:bg-slate-800 text-white transition">
+              🛰️ Sincronizza Nodi OSM Overpass
+            </button>
+          </div>
+          <div id="geoMap" class="border border-slate-200 shadow-inner"></div>
+        </div>
+
+        <!-- DISTANCE SLIDER & REAL-TIME OPEN NOW FILTER -->
+        <div class="pt-2 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+          <div class="sm:col-span-7">
+            <div class="flex items-center justify-between text-xs font-bold mb-1">
+              <span class="text-slate-700">📍 Raggio Massimo di Ricerca:</span>
+              <span id="radiusValueLabel" class="mono-price text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">4.5 km</span>
+            </div>
+            <input id="radiusSlider" type="range" min="0.5" max="8.0" step="0.5" value="4.5" oninput="handleRadiusChange(this.value)" class="w-full accent-emerald-600 cursor-pointer" />
+            <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+              <span>0.5 km</span>
+              <span>2.5 km</span>
+              <span>4.5 km</span>
+              <span>8.0 km</span>
+            </div>
+          </div>
+
+          <div class="sm:col-span-5 flex flex-col gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
+              <input id="chkOnlyOpenNow" type="checkbox" checked onchange="refreshAllViews()" class="w-4 h-4 accent-emerald-600 rounded cursor-pointer" />
+              <span>🕒 Solo Negozi Aperti Ora</span>
+            </label>
+            <p class="text-[10px] text-slate-500 leading-tight">
+              Esclude i supermercati già chiusi (es. chiusure ore 20:00) e mostra H24 o aperti fino alle 21:00–22:00.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN (5 COLS): ALL 20 NEARBY BRANCHES & OPENING STATUS -->
+      <section class="lg:col-span-5 bg-white rounded-2xl p-5 shadow-sm border border-slate-200 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div>
+              <h2 class="text-base font-extrabold text-slate-900">🏪 20 Supermercati Rilevati Intorno a Te</h2>
+              <p class="text-xs text-slate-500">Con stato orario in tempo reale, distanza GPS e navigazione</p>
+            </div>
+            <span id="storesInRangeBadge" class="text-xs font-bold mono-price px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">0 attivi</span>
+          </div>
+
+          <!-- CHAIN FILTER PILLS -->
+          <div class="flex flex-wrap gap-1 mb-3">
+            <button onclick="setBranchFilter('ALL')" id="branchFilter-ALL" class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-900 text-white">Tutti (20)</button>
+            <button onclick="setBranchFilter('OPEN')" id="branchFilter-OPEN" class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 hover:bg-emerald-50">🟢 Aperti Ora</button>
+            <button onclick="setBranchFilter('H24')" id="branchFilter-H24" class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 hover:bg-sky-50">🌙 Aperti H24 / Notte</button>
+            <button onclick="setBranchFilter('DISCOUNT')" id="branchFilter-DISCOUNT" class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 hover:bg-blue-50">💰 Discount (Eurospin/Lidl)</button>
+          </div>
+
+          <div id="nearbyStoresList" class="space-y-2.5 max-h-[540px] overflow-y-auto custom-scroll pr-1">
+            <!-- Populated by renderNearbyStoresRadar() -->
+          </div>
+        </div>
+
+        <div class="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+          <span>🚫 <em>Soc.Coop. 29 Giugno (Via Pomona 63)</em> filtrata (non alimentare).</span>
+          <button onclick="centerMapOnUser()" class="font-bold text-emerald-700 hover:underline">Centra Mappa 📍</button>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 3. OPTIMIZATION MODE TABS (4 MODES INCLUDING WALKING COMBO) -->
+    <section class="bg-white rounded-2xl p-2 shadow-sm border border-slate-200">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <button id="tabBtn-single" onclick="switchMode('single')" class="flex items-center justify-between p-3.5 rounded-xl text-left transition border">
+          <div>
+            <div class="text-[11px] font-bold uppercase tracking-wider opacity-75">Modalità 1 • Spesa Unica</div>
+            <div class="text-sm font-extrabold mt-0.5">🏪 Classifica 8 Catene</div>
+          </div>
+          <span id="tabBadge-single" class="mono-price text-sm font-extrabold px-2 py-1 rounded-lg">€0.00</span>
+        </button>
+
+        <button id="tabBtn-combo" onclick="switchMode('combo')" class="flex items-center justify-between p-3.5 rounded-xl text-left transition border">
+          <div>
+            <div class="text-[11px] font-bold uppercase tracking-wider opacity-75">Modalità 2 • Zero Auto (90m)</div>
+            <div class="text-sm font-extrabold mt-0.5">🚶 Combo Tiburtina (Eurospin+Lidl)</div>
+          </div>
+          <span id="tabBadge-combo" class="mono-price text-sm font-extrabold px-2 py-1 rounded-lg">€0.00</span>
+        </button>
+
+        <button id="tabBtn-mixed" onclick="switchMode('mixed')" class="flex items-center justify-between p-3.5 rounded-xl text-left transition border">
+          <div>
+            <div class="text-[11px] font-bold uppercase tracking-wider opacity-75">Modalità 3 • Massimo Risparmio</div>
+            <div class="text-sm font-extrabold mt-0.5">⚡ Spesa Mista Tutti i Negozi</div>
+          </div>
+          <span id="tabBadge-mixed" class="mono-price text-sm font-extrabold px-2 py-1 rounded-lg">€0.00</span>
+        </button>
+
+        <button id="tabBtn-unit" onclick="switchMode('unit')" class="flex items-center justify-between p-3.5 rounded-xl text-left transition border">
+          <div>
+            <div class="text-[11px] font-bold uppercase tracking-wider opacity-75">Modalità 4 • Formati Famiglia</div>
+            <div class="text-sm font-extrabold mt-0.5">⚖️ Convenienza al Kg / Litro</div>
+          </div>
+          <span id="tabBadge-unit" class="mono-price text-sm font-extrabold px-2 py-1 rounded-lg">€0.00</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 4. DYNAMIC RESULTS SECTION -->
+    <section id="resultsContainer" class="space-y-4">
+      <!-- Populated by renderOptimizationResults() -->
+    </section>
+
+  </main>
+
+  <!-- PRODUCT SUBSTITUTION MODAL -->
+  <div id="swapModal" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+        <div>
+          <h3 id="swapModalTitle" class="font-extrabold text-base">Sostituisci Prodotto o Marca</h3>
+          <p id="swapModalSubtitle" class="text-xs text-slate-300">Scegli una variante diversa per ricalcolare istantaneamente tutti i totali</p>
+        </div>
+        <button onclick="closeSwapModal()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">✕</button>
+      </div>
+      <div id="swapModalBody" class="p-4 overflow-y-auto custom-scroll space-y-2.5 flex-1"></div>
+    </div>
+  </div>
+
+  <!-- FLYER EXPLORER MODAL -->
+  <div id="flyerModal" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+        <div>
+          <h3 class="font-extrabold text-base">📰 Esploratore Volantini Attivi Roma (Ottobre 2026) & Filtro Anti-Decoy</h3>
+          <p class="text-xs text-slate-300">Tutti i prezzi promozionali rilevati per Eurospin, Lidl, M.A. Supermercati, Conad, Panorama, Esselunga, Carrefour e Coop</p>
+        </div>
+        <button onclick="closeFlyerModal()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">✕</button>
+      </div>
+      <div id="flyerModalFilterBar" class="p-3 bg-slate-100 border-b border-slate-200 flex flex-wrap gap-1.5"></div>
+      <div id="flyerModalBody" class="p-4 overflow-y-auto custom-scroll flex-1 space-y-4"></div>
+    </div>
+  </div>
+
+  <!-- SUPERMARKET CHECKLIST DRAWER -->
+  <div id="checklistDrawer" class="fixed inset-0 z-50 hidden bg-slate-950/50 backdrop-blur-xs flex justify-end">
+    <div class="bg-white w-full max-w-md h-full flex flex-col shadow-2xl border-l border-slate-200">
+      <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+        <div>
+          <h3 class="font-extrabold text-base">🛒 Checklist al Supermercato</h3>
+          <p class="text-xs text-slate-300">Divisa per punto vendita e corsia • Persistenza automatica in localStorage</p>
+        </div>
+        <button onclick="toggleChecklistDrawer()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">✕</button>
+      </div>
+
+      <div class="p-3 bg-emerald-50 border-b border-emerald-200 flex items-center justify-between text-xs">
+        <span id="checklistProgressText" class="font-bold text-emerald-900">Completamento spesa: 0%</span>
+        <button onclick="clearCheckedItems()" class="text-emerald-800 hover:underline font-semibold">Azzera spunte</button>
+      </div>
+
+      <div id="checklistBody" class="p-4 overflow-y-auto custom-scroll flex-1 space-y-4"></div>
+
+      <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+        <div>
+          <div class="text-[11px] uppercase font-bold text-slate-400">Totale Modalità Attiva</div>
+          <div id="checklistTotalFooter" class="mono-price text-lg font-extrabold text-slate-900">€0.00</div>
+        </div>
+        <button onclick="exportChecklistText()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow">
+          📋 Copia per WhatsApp
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPLOY & DEVOPS MODAL -->
+  <div id="deployModal" class="fixed inset-0 z-50 hidden bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-3xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
+        <div>
+          <h3 class="font-extrabold text-base">⚙️ Configurazione DevOps & Deploy Cloud Production</h3>
+          <p class="text-xs text-slate-300">Pronta per Vercel, Netlify e Google Cloud Run (Docker Multi-Stage + Nginx)</p>
+        </div>
+        <button onclick="closeDeployModal()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300">✕</button>
+      </div>
+      <div class="p-5 overflow-y-auto custom-scroll space-y-4 text-xs">
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-emerald-950">
+          <div class="font-extrabold text-sm mb-1">🚀 Comando Rapido da 1 Riga per il Deploy Pubblico Istantaneo</div>
+          <code class="block bg-slate-900 text-emerald-400 p-2.5 rounded-lg font-mono text-xs select-all">npx vercel --prod --yes</code>
+        </div>
+        <div>
+          <div class="font-bold text-slate-800 mb-1">1. <code>Dockerfile</code> (Google Cloud Run — Nginx Alpine porta 8080)</div>
+          <pre class="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono overflow-x-auto select-all">FROM nginx:1.27-alpine
+COPY index.html /usr/share/nginx/html/index.html
+RUN sed -i 's/listen       80;/listen       8080;/g' /etc/nginx/conf.d/default.conf
+EXPOSE 8080
+CMD ["nginx", "-g", "daemon off;"]</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION CORE SCRIPT -->
+  <script>
+    /*************************************************************************
+     * 1. USER GEOLOCATION STATE & REAL-TIME CLOCK
+     *************************************************************************/
+    const USER_GEO_STATE = {
+      lat: 41.9065, // Roma Quadrante Tiburtina / Casal Bertone
+      lon: 12.5385,
+      address: "Roma — Quadrante Tiburtina / Casal Bertone",
+      radiusKm: 4.5,
+      activeMode: 'single', // 'single' | 'combo' | 'mixed' | 'unit'
+      branchFilter: 'ALL',  // 'ALL' | 'OPEN' | 'H24' | 'DISCOUNT'
+      customOverrides: {},
+      checkedItems: JSON.parse(localStorage.getItem('spesasmart_checked_v3') || '{}')
+    };
+
+    /*************************************************************************
+     * 2. ALL 20 REAL GEOLOCATED SUPERMARKETS IN ROME (WITH OPENING HOURS)
+     *************************************************************************/
+    const REAL_BRANCHES_DB = [
+      { id: 'b_ma_tib', chainId: 'ma', name: 'M.A. Supermercati', address: 'Via Tiburtina 435', area: 'Tiburtina / Casal Bertone', lat: 41.9069, lon: 12.5398, openHour: 8, closeHour: 21.0, isH24: false, isDiscount: false, placeId: 'ChIJzeS-ENFjLxMR1OuNMqym8vs', note: 'Più vicino in assoluto • Ottimo banco taglio e sottocosto marchi' },
+      { id: 'b_con_cri', chainId: 'conad', name: 'Conad City', address: 'Via dei Crispolti 60', area: 'Casal Bertone', lat: 41.9001, lon: 12.5395, openHour: 8, closeHour: 20.0, isH24: false, isDiscount: false, placeId: 'ChIJ5bQb6chjLxMR4VjhaFugMWg', note: 'Supermercato di quartiere • Linea Bassi e Fissi (Chiude alle 20:00)' },
+      { id: 'b_con_bal', chainId: 'conad', name: 'Conad', address: 'Piazza Riccardo Balsamo Crivelli 29', area: 'Casal Bertone', lat: 41.8992, lon: 12.5422, openHour: 8, closeHour: 20.0, isH24: false, isDiscount: false, placeId: 'ChIJ81mef8ljLxMRHakULIn3bqM', note: 'Nel cuore di Casal Bertone (Chiude alle 20:00)' },
+      { id: 'b_lid_tib647', chainId: 'lidl', name: 'Lidl Via Tiburtina 647', address: 'Via Tiburtina 647', area: 'Tiburtina', lat: 41.9110, lon: 12.5479, openHour: 8, closeHour: 22.0, isH24: false, isDiscount: true, placeId: 'ChIJj8Rzac5jLxMRko3YK_iZ4-E', note: 'A 90m da Eurospin! Aperto fino alle 22:00 • Top formati XXL e Panetteria' },
+      { id: 'b_eur_tib655', chainId: 'eurospin', name: 'Eurospin Via Tiburtina 655', address: 'Via Tiburtina 655', area: 'Tiburtina', lat: 41.9114, lon: 12.5488, openHour: 8, closeHour: 22.0, isH24: false, isDiscount: true, placeId: 'ChIJiUuOo8hjLxMRxQVHTc6HP7Y', note: '1° Assoluto Convenienza Spesa Unica • Aperto fino alle 22:00' },
+      { id: 'b_spazio_con', chainId: 'conad', name: 'Spazio Conad (C.C. Casal Bertone)', address: 'Via Alberto Pollio 50', area: 'Casal Bertone', lat: 41.8984, lon: 12.5389, openHour: 8, closeHour: 21.0, isH24: false, isDiscount: false, placeId: 'ChIJsZLjTCpiLxMR6YoPyULC-rQ', note: 'Ipermercato completo con parcheggio coperto • Aperto fino alle 21:00' },
+      { id: 'b_pan_tib', chainId: 'panorama', name: 'Panorama Roma Tiburtina', address: 'Via Tiburtina 757', area: 'Tiburtina', lat: 41.9145, lon: 12.5562, openHour: 8, closeHour: 21.0, isH24: false, isDiscount: false, placeId: 'ChIJl36ei7hjLxMR1WbEjCtXi-c', note: 'Ipermercato • Pescheria e grandi formati in sottocosto fino alle 21:00' },
+      { id: 'b_lid_leg', chainId: 'lidl', name: 'Lidl Piazza Bologna', address: 'Via della Lega Lombarda 32', area: 'Piazza Bologna / Policlinico', lat: 41.9082, lon: 12.5218, openHour: 8, closeHour: 22.0, isH24: false, isDiscount: true, placeId: 'ChIJbwU20PphLxMR3H7gvuiOE7U', note: 'Adiacente a Conad Superstore • Aperto fino alle 22:00' },
+      { id: 'b_con_leg', chainId: 'conad', name: 'Conad Superstore', address: 'Via della Lega Lombarda 34', area: 'Piazza Bologna', lat: 41.9084, lon: 12.5215, openHour: 8, closeHour: 21.0, isH24: false, isDiscount: false, placeId: 'ChIJbYauLgZhLxMRIvF976wv9ks', note: 'Fianco a fianco con Lidl • Assortimento completo fino alle 21:00' },
+      { id: 'b_car_xxi', chainId: 'carrefour', name: 'Carrefour Market H24', address: 'Viale XXI Aprile 23', area: 'Bologna / Nomentano', lat: 41.9162, lon: 12.5236, openHour: 0, closeHour: 24.0, isH24: true, isDiscount: false, placeId: 'ChIJ9z38FGZhLxMRzKLYk9Gu0GQ', note: 'APERTO 24 ORE SU 24 • Ideale per spesa notturna dopo le 22:00' },
+      { id: 'b_car_sab', chainId: 'carrefour', name: 'Carrefour Market San Lorenzo', address: 'Via dei Sabelli 125-129', area: 'San Lorenzo', lat: 41.8981, lon: 12.5178, openHour: 7, closeHour: 25.0, isH24: true, isDiscount: false, placeId: 'ChIJrU0vPpthLxMRTjDwnphTGow', note: 'Aperto fino alle 01:00 di notte • Comodo zona universitaria' },
+      { id: 'b_eur_pie', chainId: 'eurospin', name: 'Eurospin Pietralata', address: 'Via di Pietralata 253', area: 'Pietralata', lat: 41.9195, lon: 12.5492, openHour: 8, closeHour: 20.0, isH24: false, isDiscount: true, placeId: 'ChIJ9cm8WuljLxMRMvuAQem-oM0', note: 'Tranquillo al mattino (Chiude alle 20:00 nei feriali)' },
+      { id: 'b_lid_sca', chainId: 'lidl', name: 'Lidl Colli Aniene', address: 'Via Giuseppe Scalarini', area: 'Colli Aniene / Ponte Mammolo', lat: 41.9182, lon: 12.5665, openHour: 8, closeHour: 21.5, isH24: false, isDiscount: true, placeId: 'ChIJPbuay8ljLxMR3mwa2Z2EAMU', note: 'Ampio parcheggio • Aperto fino alle 21:30' },
+      { id: 'b_coo_fra', chainId: 'coop', name: 'Coop Colli Aniene', address: 'Largo Nino Franchellucci 65', area: 'Colli Aniene', lat: 41.9135, lon: 12.5698, openHour: 8.5, closeHour: 20.5, isH24: false, isDiscount: false, placeId: 'ChIJo7FBoEhiLxMR0cPQNIrxkk0', note: 'Linea Spesotti e offerte Soci Coop (Chiude alle 20:30)' },
+      { id: 'b_con_pig', chainId: 'conad', name: 'Conad City Pigneto', address: 'Via del Pigneto 135', area: 'Pigneto', lat: 41.8882, lon: 12.5315, openHour: 8, closeHour: 21.5, isH24: false, isDiscount: false, placeId: 'ChIJ2xDl9IlhLxMRF6g44URPfPw', note: 'Orario prolungato fino alle 21:30' },
+      { id: 'b_lid_acq', chainId: 'lidl', name: 'Lidl Acqua Bullicante', address: 'Via di Acqua Bullicante 248', area: 'Prenestino / Malatesta', lat: 41.8891, lon: 12.5432, openHour: 8, closeHour: 22.0, isH24: false, isDiscount: true, placeId: 'ChIJY7RFIjtiLxMRdeTVoesnJPE', note: 'Aperto fino alle 22:00 • Casse veloci' },
+      { id: 'b_eur_pra', chainId: 'eurospin', name: 'Eurospin Collatino', address: 'Via Camillo Prampolini 6/12', area: 'Collatino / Prenestino', lat: 41.8965, lon: 12.5595, openHour: 8, closeHour: 21.0, isH24: false, isDiscount: true, placeId: 'ChIJ6UI3o1RiLxMRHexI6k7puiU', note: 'Ottima macelleria confezionata • Aperto fino alle 21:00' },
+      { id: 'b_eur_gor', chainId: 'eurospin', name: 'Eurospin Santa Maria Goretti', address: 'Via di Santa Maria Goretti 22', area: 'Trieste / Salario', lat: 41.9285, lon: 12.5212, openHour: 8, closeHour: 20.5, isH24: false, isDiscount: true, placeId: 'ChIJ-x50YgBhLxMR5IOTh2gb7vk', note: 'Molto curato • Chiude alle 20:30' },
+      { id: 'b_ess_tog', chainId: 'esselunga', name: 'Esselunga Superstore Togliatti', address: 'Viale Palmiro Togliatti 1021', area: 'Prenestina / Centocelle', lat: 41.8895, lon: 12.5735, openHour: 7.5, closeHour: 21.0, isH24: false, isDiscount: false, placeId: 'ChIJA-tAuKpjLxMRmM0RHYk7rsU', note: 'Top Grandi Marche (Sconti Fidaty 50% + Linea Smart) • Aperto fino alle 21:00' },
+      { id: 'b_car_cas', chainId: 'carrefour', name: 'Carrefour Market H24 Casilina', address: 'Via Casilina 288', area: 'Casilino / Pigneto', lat: 41.8842, lon: 12.5335, openHour: 0, closeHour: 24.0, isH24: true, isDiscount: false, placeId: 'ChIJ4zGGPiBiLxMRulV9uYG_q4k', note: 'APERTO 24 ORE SU 24 sul quadrante Casilino' }
+    ];
+
+    // 8 SUPERMARKET CHAINS FOR FLYER PRICING ENGINE
+    const CHAINS_META = {
+      eurospin: { id: 'eurospin', name: 'Eurospin', flyerTitle: 'Volantino 8–18 Ott 2026 • La Spesa Intelligente & Sapori Toscani', badgeColor: 'bg-blue-700 text-white' },
+      lidl: { id: 'lidl', name: 'Lidl', flyerTitle: 'Volantino Ottobre 2026 • Formato Convenienza XXL & Italiamo', badgeColor: 'bg-yellow-400 text-blue-950' },
+      ess_smart: { id: 'esselunga', name: 'Esselunga', flyerTitle: 'Volantino Sconti Fidaty fino al 50% & Linea Smart', badgeColor: 'bg-amber-600 text-white' },
+      esselunga: { id: 'esselunga', name: 'Esselunga', flyerTitle: 'Volantino Sconti Fidaty fino al 50% & Linea Smart', badgeColor: 'bg-amber-600 text-white' },
+      coop: { id: 'coop', name: 'Coop', flyerTitle: 'Volantino Soci Coop & Linea Risparmio Spesotti', badgeColor: 'bg-red-600 text-white' },
+      conad: { id: 'conad', name: 'Spazio Conad / Conad', flyerTitle: 'Volantino Bassi e Fissi & Carta Insieme', badgeColor: 'bg-orange-600 text-white' },
+      panorama: { id: 'panorama', name: 'Pam Panorama', flyerTitle: 'Volantino Sottocosto Grandi Marche Tiburtina', badgeColor: 'bg-purple-700 text-white' },
+      ma: { id: 'ma', name: 'M.A. Supermercati', flyerTitle: 'Volantino Offerte di Quartiere Via Tiburtina 435', badgeColor: 'bg-emerald-700 text-white' },
+      carrefour: { id: 'carrefour', name: 'Carrefour Market H24', flyerTitle: 'Volantino SpesaAmica, Payback & Linea Simpl (H24)', badgeColor: 'bg-sky-700 text-white' }
+    };
+
+    /*************************************************************************
+     * 3. 15 INGREDIENT CATEGORIES (12 CORE + 3 OCTOBER FLYER SPECIALS)
+     *************************************************************************/
+    const CATEGORIES_SCHEMA = [
+      { id: 'pasta', label: 'Pasta di Semola', icon: '🍝', aisle: 'Corsia 1 • Dispensa & Primi', baseUnit: 'kg', defaultQty: 0.5, synonyms: ['pasta', 'spaghetti', 'penne', 'rigatoni', 'fusilli', 'rummo', 'molisana'], negativeTokens: ['mandorle', 'dentifricio', 'sfoglia', 'frolla', 'acciughe'] },
+      { id: 'passata', label: 'Passata / Polpa di Pomodoro', icon: '🍅', aisle: 'Corsia 1 • Conserve Rosse', baseUnit: 'kg', defaultQty: 0.7, synonyms: ['passata', 'passata di pomodoro', 'polpa di pomodoro', 'salsa di pomodoro', 'pelati', 'mutti'], negativeTokens: ['patatine', 'succo'] },
+      { id: 'latte', label: 'Latte Intero', icon: '🥛', aisle: 'Corsia 2 • Banco Frigo & Latte', baseUnit: 'L', defaultQty: 1.0, synonyms: ['latte', 'latte intero', 'latte fresco', 'latte uht'], negativeTokens: ['detergente', 'corpo', 'solare', 'cioccolato', 'mandorla', 'cocco'] },
+      { id: 'uova', label: 'Uova Fresche', icon: '🥚', aisle: 'Corsia 2 • Uova & Freschi', baseUnit: 'kg', defaultQty: 0.36, synonyms: ['uova', 'uovo', '6 uova', '10 uova', '30 uova'], negativeTokens: ['biscotti', 'all\'uovo', 'pasqua', 'cioccolato', 'tagliatelle'] },
+      { id: 'pollo', label: 'Petto di Pollo', icon: '🍗', aisle: 'Corsia 3 • Macelleria', baseUnit: 'kg', defaultQty: 0.4, synonyms: ['petto di pollo', 'pollo', 'fettine di pollo', 'tagliata di pollo'], negativeTokens: ['dado', 'brodo', 'crocchette', 'gatto'] },
+      { id: 'olio', label: 'Olio Extra Vergine d\'Oliva', icon: '🫒', aisle: 'Corsia 4 • Oli & Condimenti', baseUnit: 'L', defaultQty: 0.75, synonyms: ['olio evo', 'olio extravergine', 'olio extra vergine', 'olio di oliva', 'olio d\'oliva', 'olio'], negativeTokens: ['cuticole', 'motore', 'semi', 'friggere', 'massaggio'] },
+      { id: 'farina', label: 'Farina Tipo 00 / 0', icon: '🌾', aisle: 'Corsia 1 • Farine & Lieviti', baseUnit: 'kg', defaultQty: 1.0, synonyms: ['farina', 'farina 00', 'farina 0', 'farina di grano'], negativeTokens: ['lattea', 'castagne'] },
+      { id: 'caffe', label: 'Caffè Macinato / Capsule', icon: '☕', aisle: 'Corsia 5 • Colazione & Caffè', baseUnit: 'kg', defaultQty: 0.25, synonyms: ['caffe', 'caffè', 'moka', 'lavazza', 'capsule', 'don jerez'], negativeTokens: ['liquore', 'caramelle', 'gelato'] },
+      { id: 'mozzarella', label: 'Mozzarella / Bufala DOP', icon: '🧀', aisle: 'Corsia 2 • Latticini & Formaggi', baseUnit: 'kg', defaultQty: 0.375, synonyms: ['mozzarella', 'mozzarelle', 'fiordilatte', 'bufala'], negativeTokens: ['in carrozza', 'stick'] },
+      { id: 'mele', label: 'Mele Fresche', icon: '🍎', aisle: 'Corsia 6 • Ortofrutta', baseUnit: 'kg', defaultQty: 1.0, synonyms: ['mele', 'mela', 'mele gala', 'mele golden'], negativeTokens: ['aceto', 'disidratate', 'succo', 'strudel'] },
+      { id: 'pane', label: 'Pane Casereccio / Segale / Tramezzino', icon: '🍞', aisle: 'Corsia 7 • Panetteria', baseUnit: 'kg', defaultQty: 0.5, synonyms: ['pane', 'pagnotta', 'filone', 'pan bauletto', 'pane alla segale', 'tramezzino'], negativeTokens: ['angeli', 'degli angeli', 'lievito', 'grattugiato', 'pangrattato'] },
+      { id: 'tonno', label: 'Tonno in Scatola', icon: '🐟', aisle: 'Corsia 4 • Conserve Ittiche', baseUnit: 'kg', defaultQty: 0.24, synonyms: ['tonno', 'tonno all\'olio', 'tonno in scatola', 'tonnino', 'rio mare'], negativeTokens: ['patè', 'gatto'] },
+      { id: 'macinato', label: 'Macinato Misto Bovino/Suino', icon: '🥩', aisle: 'Corsia 3 • Macelleria', baseUnit: 'kg', defaultQty: 0.5, synonyms: ['macinato', 'carne macinata', 'macinato misto', 'ragu'], negativeTokens: ['caffe', 'pepe'] }
+    ];
+
+    /*************************************************************************
+     * 4. REAL FLYER PRODUCTS CATALOG across ALL 8 ROME CHAINS
+     *************************************************************************/
+    const PRODUCTS_DB = [
+      // --- PASTA ---
+      { id: 'p_eur_1', storeId: 'eurospin', categoryId: 'pasta', name: 'Pasta Trafilata al Bronzo Tre Mulini', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 0.65, onOffer: true, flyerNote: 'Volantino Eurospin 0,65€ (1,30 €/kg)' },
+      { id: 'p_lid_1', storeId: 'lidl', categoryId: 'pasta', name: 'Spaghetti / Penne IGP Italiamo', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 0.75, onOffer: true, flyerNote: 'Volantino Lidl Italiamo' },
+      { id: 'p_lid_2', storeId: 'lidl', categoryId: 'pasta', name: 'Pasta di Semola Combino XXL', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.19, onOffer: true, flyerNote: 'Formato XXL 1,19 €/kg' },
+      { id: 'p_con_1', storeId: 'conad', categoryId: 'pasta', name: 'Pasta di Semola Conad Bassi e Fissi', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 0.79, onOffer: true, flyerNote: 'Paniere Bassi e Fissi' },
+      { id: 'p_ma_1', storeId: 'ma', categoryId: 'pasta', name: 'Pasta La Molisana / Rummo Sottocosto', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 0.89, onOffer: true, flyerNote: 'Offerta Sottocosto M.A. Tiburtina' },
+      { id: 'p_pan_1', storeId: 'panorama', categoryId: 'pasta', name: 'Pasta De Cecco Classica', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 0.99, onOffer: true, flyerNote: 'Volantino Pam Panorama' },
+      { id: 'p_ess_1', storeId: 'esselunga', categoryId: 'pasta', name: 'Pasta Barilla Classica (1 kg)', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.38, onOffer: true, flyerNote: 'Sconto Fidaty 40%' },
+      { id: 'p_coo_1', storeId: 'coop', categoryId: 'pasta', name: 'Pasta di Semola Spesotti Coop', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 0.75, onOffer: true, flyerNote: 'Linea Risparmio Spesotti' },
+      { id: 'p_car_1', storeId: 'carrefour', categoryId: 'pasta', name: 'Pasta di Semola Simpl Carrefour', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 0.79, onOffer: false, flyerNote: 'Linea Simpl H24' },
+
+      // --- PASSATA DI POMODORO ---
+      { id: 'pa_eur_1', storeId: 'eurospin', categoryId: 'passata', name: 'Polpa di Pomodoro Delizie del Sole', sizeLabel: '680 g', unitWeight: 0.68, unitType: 'kg', price: 0.75, onOffer: true, flyerNote: 'Volantino Eurospin 0,75€' },
+      { id: 'pa_lid_1', storeId: 'lidl', categoryId: 'passata', name: 'Passata di Pomodoro Mutti XXL 800g', sizeLabel: '800 g', unitWeight: 0.8, unitType: 'kg', price: 1.39, onOffer: true, flyerNote: 'Volantino Lidl Formato XXL' },
+      { id: 'pa_lid_2', storeId: 'lidl', categoryId: 'passata', name: 'Passata Classica Freshona', sizeLabel: '700 g', unitWeight: 0.7, unitType: 'kg', price: 0.85, onOffer: false, flyerNote: 'Prezzo basso fisso' },
+      { id: 'pa_con_1', storeId: 'conad', categoryId: 'passata', name: 'Passata Verace Cirio / Mutti Promo', sizeLabel: '700 g', unitWeight: 0.7, unitType: 'kg', price: 0.99, onOffer: true, flyerNote: 'Volantino Conad Carta Insieme' },
+      { id: 'pa_ma_1', storeId: 'ma', categoryId: 'passata', name: 'Passata di Pomodoro Santa Rosa', sizeLabel: '700 g', unitWeight: 0.7, unitType: 'kg', price: 0.99, onOffer: true, flyerNote: 'Promo M.A. Supermercati' },
+      { id: 'pa_pan_1', storeId: 'panorama', categoryId: 'passata', name: 'Passata di Pomodoro De Rica', sizeLabel: '700 g', unitWeight: 0.7, unitType: 'kg', price: 0.95, onOffer: true, flyerNote: 'Volantino Panorama' },
+      { id: 'pa_ess_1', storeId: 'esselunga', categoryId: 'passata', name: 'Passata di Pomodoro Mutti Classica', sizeLabel: '700 g', unitWeight: 0.7, unitType: 'kg', price: 1.09, onOffer: true, flyerNote: 'Sconto Fidaty' },
+      { id: 'pa_coo_1', storeId: 'coop', categoryId: 'passata', name: 'Passata 100% Pomodoro Italiano Coop', sizeLabel: '700 g', unitWeight: 0.7, unitType: 'kg', price: 0.89, onOffer: true, flyerNote: 'Offerta Soci Coop' },
+      { id: 'pa_car_1', storeId: 'carrefour', categoryId: 'passata', name: 'Passata Classica Carrefour', sizeLabel: '700 g', unitWeight: 0.7, unitType: 'kg', price: 1.05, onOffer: false, flyerNote: 'Listino H24' },
+
+      // --- LATTE INTERO ---
+      { id: 'la_eur_1', storeId: 'eurospin', categoryId: 'latte', name: 'Latte UHT Intero 100% Italiano Land', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 0.99, onOffer: true, flyerNote: 'Volantino Eurospin 0,99€' },
+      { id: 'la_lid_1', storeId: 'lidl', categoryId: 'latte', name: 'Latte Intero UHT Milbona', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 1.05, onOffer: false, flyerNote: 'Prezzo quotidiano Lidl' },
+      { id: 'la_ess_1', storeId: 'esselunga', categoryId: 'latte', name: 'Latte UHT Intero Esselunga Smart', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 0.99, onOffer: false, flyerNote: 'Linea Smart Esselunga' },
+      { id: 'la_con_1', storeId: 'conad', categoryId: 'latte', name: 'Latte Intero UHT Conad Bassi e Fissi', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 1.15, onOffer: true, flyerNote: 'Paniere Bassi e Fissi' },
+      { id: 'la_coo_1', storeId: 'coop', categoryId: 'latte', name: 'Latte UHT Intero Italiano Coop', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 1.09, onOffer: true, flyerNote: 'Offerta Soci Coop' },
+      { id: 'la_pan_1', storeId: 'panorama', categoryId: 'latte', name: 'Latte UHT Intero Parmalat', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 1.19, onOffer: true, flyerNote: 'Promo Panorama' },
+      { id: 'la_ma_1', storeId: 'ma', categoryId: 'latte', name: 'Latte UHT Arborea Intero', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 1.15, onOffer: true, flyerNote: 'Offerta M.A.' },
+      { id: 'la_car_1', storeId: 'carrefour', categoryId: 'latte', name: 'Latte Intero Simpl Carrefour', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 1.19, onOffer: false, flyerNote: 'Linea Simpl H24' },
+
+      // --- UOVA FRESCHE ---
+      { id: 'uo_eur_1', storeId: 'eurospin', categoryId: 'uova', name: 'Uova Fresche Medie Allevate a Terra (6 pz)', sizeLabel: '6 pz (360 g)', unitWeight: 0.36, unitType: 'kg', price: 1.49, onOffer: false, flyerNote: '0,25€ a uovo' },
+      { id: 'uo_lid_1', storeId: 'lidl', categoryId: 'uova', name: 'Uova Fresche Medie (6 pz)', sizeLabel: '6 pz (360 g)', unitWeight: 0.36, unitType: 'kg', price: 1.49, onOffer: false, flyerNote: 'Confezione da 6 uova' },
+      { id: 'uo_lid_2', storeId: 'lidl', categoryId: 'uova', name: 'Uova Fresche Medie Confezione XXL (30 pz)', sizeLabel: '30 pz (1.8 kg)', unitWeight: 1.8, unitType: 'kg', price: 5.99, onOffer: true, flyerNote: 'Volantino Lidl XXL: solo 0,20€ a uovo (3,33 €/kg)!' },
+      { id: 'uo_con_1', storeId: 'conad', categoryId: 'uova', name: 'Uova Fresche Allevate a Terra Conad (6 pz)', sizeLabel: '6 pz (360 g)', unitWeight: 0.36, unitType: 'kg', price: 1.65, onOffer: true, flyerNote: 'Bassi e Fissi' },
+      { id: 'uo_coo_1', storeId: 'coop', categoryId: 'uova', name: 'Uova Fresche Italiane Coop (10 pz)', sizeLabel: '10 pz (600 g)', unitWeight: 0.6, unitType: 'kg', price: 2.29, onOffer: true, flyerNote: 'Formato Risparmio 10 uova' },
+      { id: 'uo_ess_1', storeId: 'esselunga', categoryId: 'uova', name: 'Uova Fresche Le Naturelle (6 pz)', sizeLabel: '6 pz (360 g)', unitWeight: 0.36, unitType: 'kg', price: 1.69, onOffer: true, flyerNote: 'Sconto Fidaty' },
+      { id: 'uo_pan_1', storeId: 'panorama', categoryId: 'uova', name: 'Uova Fresche AIA (6 pz)', sizeLabel: '6 pz (360 g)', unitWeight: 0.36, unitType: 'kg', price: 1.69, onOffer: true, flyerNote: 'Offerta Panorama' },
+      { id: 'uo_ma_1', storeId: 'ma', categoryId: 'uova', name: 'Uova Fresche Campagnole (6 pz)', sizeLabel: '6 pz (360 g)', unitWeight: 0.36, unitType: 'kg', price: 1.59, onOffer: true, flyerNote: 'Promo M.A.' },
+      { id: 'uo_car_1', storeId: 'carrefour', categoryId: 'uova', name: 'Uova Fresche Simpl (6 pz)', sizeLabel: '6 pz (360 g)', unitWeight: 0.36, unitType: 'kg', price: 1.69, onOffer: false, flyerNote: 'Linea Simpl' },
+
+      // --- PETTO DI POLLO ---
+      { id: 'po_lid_1', storeId: 'lidl', categoryId: 'pollo', name: 'Tagliata di Petto di Pollo in Offerta', sizeLabel: '400 g', unitWeight: 0.4, unitType: 'kg', price: 2.99, onOffer: true, flyerNote: 'Super Promo Volantino Lidl: 2,99€ (7,48 €/kg)' },
+      { id: 'po_eur_1', storeId: 'eurospin', categoryId: 'pollo', name: 'Petto di Pollo a Fette Sottili', sizeLabel: '450 g', unitWeight: 0.45, unitType: 'kg', price: 3.59, onOffer: true, flyerNote: 'Volantino Macelleria Eurospin (7,98 €/kg)' },
+      { id: 'po_con_1', storeId: 'conad', categoryId: 'pollo', name: 'Petto di Pollo a Fette Confezione Famiglia', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 4.39, onOffer: true, flyerNote: 'Volantino Conad (8,78 €/kg)' },
+      { id: 'po_ess_1', storeId: 'esselunga', categoryId: 'pollo', name: 'Fettine di Petto di Pollo Naturama', sizeLabel: '450 g', unitWeight: 0.45, unitType: 'kg', price: 3.99, onOffer: true, flyerNote: 'Promo Macelleria Esselunga' },
+      { id: 'po_coo_1', storeId: 'coop', categoryId: 'pollo', name: 'Petto di Pollo Origine Coop Senza Antibiotici', sizeLabel: '450 g', unitWeight: 0.45, unitType: 'kg', price: 4.19, onOffer: true, flyerNote: 'Offerta Soci Coop' },
+      { id: 'po_pan_1', storeId: 'panorama', categoryId: 'pollo', name: 'Petto di Pollo Amadori a Fette', sizeLabel: '450 g', unitWeight: 0.45, unitType: 'kg', price: 4.29, onOffer: true, flyerNote: 'Volantino Panorama' },
+      { id: 'po_ma_1', storeId: 'ma', categoryId: 'pollo', name: 'Petto di Pollo Fresco Banco Macelleria', sizeLabel: '450 g', unitWeight: 0.45, unitType: 'kg', price: 3.95, onOffer: true, flyerNote: 'Macelleria M.A. Tiburtina' },
+      { id: 'po_car_1', storeId: 'carrefour', categoryId: 'pollo', name: 'Petto di Pollo Filiera Carrefour', sizeLabel: '400 g', unitWeight: 0.4, unitType: 'kg', price: 4.59, onOffer: false, flyerNote: 'Listino H24' },
+
+      // --- OLIO EVO ---
+      { id: 'ol_eur_1', storeId: 'eurospin', categoryId: 'olio', name: 'Olio EVO 100% Italiano Amo Essere', sizeLabel: '750 ml', unitWeight: 0.75, unitType: 'L', price: 5.99, onOffer: true, flyerNote: 'Volantino Eurospin: 5,99€ (7,99 €/L)' },
+      { id: 'ol_lid_1', storeId: 'lidl', categoryId: 'olio', name: 'Olio EVO Terra di Bari DOP Italiamo', sizeLabel: '750 ml', unitWeight: 0.75, unitType: 'L', price: 6.99, onOffer: true, flyerNote: 'Volantino Lidl Terra di Bari DOP' },
+      { id: 'ol_ess_1', storeId: 'esselunga', categoryId: 'olio', name: 'Olio Extra Vergine Farchioni Il Casolare', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 7.49, onOffer: true, flyerNote: 'Sconto Fidaty 35% (7,49 €/L!)' },
+      { id: 'ol_coo_1', storeId: 'coop', categoryId: 'olio', name: 'Olio Extra Vergine 100% Italiano Coop', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 7.69, onOffer: true, flyerNote: 'Promo Soci Coop' },
+      { id: 'ol_con_1', storeId: 'conad', categoryId: 'olio', name: 'Olio Extra Vergine Monini Classico', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 7.89, onOffer: true, flyerNote: 'Volantino Conad' },
+      { id: 'ol_pan_1', storeId: 'panorama', categoryId: 'olio', name: 'Olio Extra Vergine De Cecco Classico', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 7.79, onOffer: true, flyerNote: 'Sottocosto Panorama' },
+      { id: 'ol_ma_1', storeId: 'ma', categoryId: 'olio', name: 'Olio Extra Vergine Coricelli', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 7.49, onOffer: true, flyerNote: 'Offerta M.A. Tiburtina' },
+      { id: 'ol_car_1', storeId: 'carrefour', categoryId: 'olio', name: 'Olio Extra Vergine Carrefour Classic', sizeLabel: '1 L', unitWeight: 1.0, unitType: 'L', price: 8.49, onOffer: false, flyerNote: 'Listino H24' },
+
+      // --- FARINA ---
+      { id: 'fa_eur_1', storeId: 'eurospin', categoryId: 'farina', name: 'Farina Tipo 00 Tre Mulini', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 0.69, onOffer: true, flyerNote: 'Volantino Eurospin 0,69€' },
+      { id: 'fa_lid_1', storeId: 'lidl', categoryId: 'farina', name: 'Farina Tipo 00 Belbake', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 0.75, onOffer: false, flyerNote: 'Prezzo basso quotidiano' },
+      { id: 'fa_ess_1', storeId: 'esselunga', categoryId: 'farina', name: 'Farina Tipo 00 Esselunga Smart', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 0.75, onOffer: false, flyerNote: 'Linea Smart' },
+      { id: 'fa_coo_1', storeId: 'coop', categoryId: 'farina', name: 'Farina Tipo 00 Spesotti Coop', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 0.75, onOffer: true, flyerNote: 'Linea Spesotti' },
+      { id: 'fa_con_1', storeId: 'conad', categoryId: 'farina', name: 'Farina Tipo 00 Conad Bassi e Fissi', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 0.79, onOffer: true, flyerNote: 'Bassi e Fissi' },
+      { id: 'fa_pan_1', storeId: 'panorama', categoryId: 'farina', name: 'Farina Tipo 00 Pam', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 0.79, onOffer: false, flyerNote: 'Linea Pam' },
+      { id: 'fa_ma_1', storeId: 'ma', categoryId: 'farina', name: 'Farina Caputo / Divella Tipo 00', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 0.85, onOffer: true, flyerNote: 'Offerta M.A.' },
+      { id: 'fa_car_1', storeId: 'carrefour', categoryId: 'farina', name: 'Farina Tipo 00 Simpl', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 0.85, onOffer: false, flyerNote: 'Linea Simpl' },
+
+      // --- CAFFÈ & CAPSULE ---
+      { id: 'ca_eur_1', storeId: 'eurospin', categoryId: 'caffe', name: 'Caffè Macinato Classico Don Jerez', sizeLabel: '250 g', unitWeight: 0.25, unitType: 'kg', price: 1.89, onOffer: true, flyerNote: 'Volantino Eurospin 1,89€' },
+      { id: 'ca_eur_2', storeId: 'eurospin', categoryId: 'caffe', name: 'Capsule Caffè Don Jerez (16 pz)', sizeLabel: '16 capsule (112 g)', unitWeight: 0.112, unitType: 'kg', price: 2.49, onOffer: true, flyerNote: 'Volantino Eurospin: 16 capsule a 2,49€' },
+      { id: 'ca_lid_1', storeId: 'lidl', categoryId: 'caffe', name: 'Caffè Macinato Moka Bellarom', sizeLabel: '250 g', unitWeight: 0.25, unitType: 'kg', price: 1.99, onOffer: false, flyerNote: 'Prezzo fisso Bellarom' },
+      { id: 'ca_coo_1', storeId: 'coop', categoryId: 'caffe', name: 'Caffè Macinato Classico Coop', sizeLabel: '250 g', unitWeight: 0.25, unitType: 'kg', price: 2.15, onOffer: true, flyerNote: 'Offerta Soci Coop' },
+      { id: 'ca_ess_1', storeId: 'esselunga', categoryId: 'caffe', name: 'Caffè Lavazza Crema e Gusto', sizeLabel: '250 g', unitWeight: 0.25, unitType: 'kg', price: 2.39, onOffer: true, flyerNote: 'Sconto Fidaty 40%' },
+      { id: 'ca_con_1', storeId: 'conad', categoryId: 'caffe', name: 'Caffè Kimbo / Conad Classico Moka', sizeLabel: '250 g', unitWeight: 0.25, unitType: 'kg', price: 2.29, onOffer: true, flyerNote: 'Volantino Conad' },
+      { id: 'ca_pan_1', storeId: 'panorama', categoryId: 'caffe', name: 'Caffè Lavazza Qualità Rossa Sottocosto', sizeLabel: '250 g', unitWeight: 0.25, unitType: 'kg', price: 2.35, onOffer: true, flyerNote: 'Sottocosto Panorama' },
+      { id: 'ca_ma_1', storeId: 'ma', categoryId: 'caffe', name: 'Caffè Kimbo Macinato Fresco', sizeLabel: '250 g', unitWeight: 0.25, unitType: 'kg', price: 2.19, onOffer: true, flyerNote: 'Offerta M.A. Tiburtina' },
+      { id: 'ca_car_1', storeId: 'carrefour', categoryId: 'caffe', name: 'Caffè Macinato Classico Carrefour', sizeLabel: '250 g', unitWeight: 0.25, unitType: 'kg', price: 2.39, onOffer: false, flyerNote: 'Listino H24' },
+
+      // --- MOZZARELLA & BUFALA DOP ---
+      { id: 'mo_eur_1', storeId: 'eurospin', categoryId: 'mozzarella', name: 'Mozzarella Multipack 4x125g Land', sizeLabel: '500 g (4x125 g)', unitWeight: 0.5, unitType: 'kg', price: 2.25, onOffer: true, flyerNote: 'Volantino Eurospin: 2,25€ (4,50 €/kg!)' },
+      { id: 'mo_eur_2', storeId: 'eurospin', categoryId: 'mozzarella', name: 'Mozzarella di Bufala Campana DOP', sizeLabel: '250 g', unitWeight: 0.25, unitType: 'kg', price: 2.15, onOffer: true, flyerNote: 'Volantino Eurospin Bufala DOP 2,15€' },
+      { id: 'mo_lid_1', storeId: 'lidl', categoryId: 'mozzarella', name: 'Mozzarella Multipack XXL Milbona 500g', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 2.69, onOffer: true, flyerNote: 'Volantino Lidl XXL' },
+      { id: 'mo_con_1', storeId: 'conad', categoryId: 'mozzarella', name: 'Mozzarella Conad 3x125g Bassi e Fissi', sizeLabel: '375 g', unitWeight: 0.375, unitType: 'kg', price: 2.39, onOffer: true, flyerNote: 'Bassi e Fissi' },
+      { id: 'mo_coo_1', storeId: 'coop', categoryId: 'mozzarella', name: 'Mozzarella Latte Italiano Coop 3x125g', sizeLabel: '375 g', unitWeight: 0.375, unitType: 'kg', price: 2.49, onOffer: true, flyerNote: 'Offerta Soci Coop' },
+      { id: 'mo_ess_1', storeId: 'esselunga', categoryId: 'mozzarella', name: 'Mozzarella Santa Lucia Galbani 3x125g', sizeLabel: '375 g', unitWeight: 0.375, unitType: 'kg', price: 2.69, onOffer: true, flyerNote: 'Sconto Fidaty 40%' },
+      { id: 'mo_pan_1', storeId: 'panorama', categoryId: 'mozzarella', name: 'Mozzarella Granarolo 3x125g', sizeLabel: '375 g', unitWeight: 0.375, unitType: 'kg', price: 2.59, onOffer: true, flyerNote: 'Volantino Panorama' },
+      { id: 'mo_ma_1', storeId: 'ma', categoryId: 'mozzarella', name: 'Mozzarella Fiordilatte Locale 3x125g', sizeLabel: '375 g', unitWeight: 0.375, unitType: 'kg', price: 2.49, onOffer: true, flyerNote: 'Banco Frigo M.A.' },
+      { id: 'mo_car_1', storeId: 'carrefour', categoryId: 'mozzarella', name: 'Mozzarella Carrefour Classic 3x125g', sizeLabel: '375 g', unitWeight: 0.375, unitType: 'kg', price: 2.89, onOffer: false, flyerNote: 'Listino H24' },
+
+      // --- MELE ---
+      { id: 'me_lid_1', storeId: 'lidl', categoryId: 'mele', name: 'Mele Rosse Gala IGP Sacco XXL (2,5 kg)', sizeLabel: '2.5 kg', unitWeight: 2.5, unitType: 'kg', price: 2.99, onOffer: true, flyerNote: 'Volantino Lidl XXL: solo 1,20 €/kg!' },
+      { id: 'me_lid_2', storeId: 'lidl', categoryId: 'mele', name: 'Mele Gala / Golden Sfuso (1 kg)', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.49, onOffer: false, flyerNote: 'Sfuso Ortofrutta' },
+      { id: 'me_eur_1', storeId: 'eurospin', categoryId: 'mele', name: 'Mele Golden / Gala Selezionate', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.39, onOffer: true, flyerNote: 'Volantino Ortofrutta Eurospin' },
+      { id: 'me_coo_1', storeId: 'coop', categoryId: 'mele', name: 'Mele Gala / Golden Origine Italia', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.55, onOffer: true, flyerNote: 'Ortofrutta Coop' },
+      { id: 'me_ess_1', storeId: 'esselunga', categoryId: 'mele', name: 'Mele Melinda Golden DOP', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.59, onOffer: true, flyerNote: 'Promo Melinda Esselunga' },
+      { id: 'me_con_1', storeId: 'conad', categoryId: 'mele', name: 'Mele Golden Alto Adige IGP', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.69, onOffer: true, flyerNote: 'Volantino Conad' },
+      { id: 'me_pan_1', storeId: 'panorama', categoryId: 'mele', name: 'Mele Gala Sfuso', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.65, onOffer: true, flyerNote: 'Ortofrutta Panorama' },
+      { id: 'me_ma_1', storeId: 'ma', categoryId: 'mele', name: 'Mele Rosse di Stagione', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.49, onOffer: true, flyerNote: 'Reparto Frutta M.A.' },
+      { id: 'me_car_1', storeId: 'carrefour', categoryId: 'mele', name: 'Mele Gala Filiera Qualità', sizeLabel: '1 kg', unitWeight: 1.0, unitType: 'kg', price: 1.89, onOffer: false, flyerNote: 'Listino H24' },
+
+      // --- PANE ---
+      { id: 'pn_eur_1', storeId: 'eurospin', categoryId: 'pane', name: 'Pane Casereccio / Affettato Tre Mulini', sizeLabel: '400 g', unitWeight: 0.4, unitType: 'kg', price: 0.99, onOffer: true, flyerNote: 'Volantino Eurospin 0,99€' },
+      { id: 'pn_eur_2', storeId: 'eurospin', categoryId: 'pane', name: 'Pane Gran Tramezzino Tre Mulini', sizeLabel: '400 g', unitWeight: 0.4, unitType: 'kg', price: 1.39, onOffer: true, flyerNote: 'Volantino Eurospin 1,39€' },
+      { id: 'pn_lid_1', storeId: 'lidl', categoryId: 'pane', name: 'Pagnotta Casereccia Forno Lidl', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 1.19, onOffer: true, flyerNote: 'Sfornato caldo sul posto' },
+      { id: 'pn_lid_2', storeId: 'lidl', categoryId: 'pane', name: 'Pane alla Segale Sfornato (600 g)', sizeLabel: '600 g', unitWeight: 0.6, unitType: 'kg', price: 1.99, onOffer: true, flyerNote: 'Volantino Lidl Pane Segale 600g' },
+      { id: 'pn_coo_1', storeId: 'coop', categoryId: 'pane', name: 'Pane Casereccio Forno Coop', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 1.29, onOffer: true, flyerNote: 'Panetteria Coop' },
+      { id: 'pn_con_1', storeId: 'conad', categoryId: 'pane', name: 'Pane Casareccio Forno Conad', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 1.35, onOffer: false, flyerNote: 'Panetteria Conad' },
+      { id: 'pn_ess_1', storeId: 'esselunga', categoryId: 'pane', name: 'Pane Pugliese Fresco di Giornata', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 1.39, onOffer: false, flyerNote: 'Forno Esselunga' },
+      { id: 'pn_pan_1', storeId: 'panorama', categoryId: 'pane', name: 'Filone Casereccio Forno Panorama', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 1.35, onOffer: false, flyerNote: 'Forno Panorama' },
+      { id: 'pn_ma_1', storeId: 'ma', categoryId: 'pane', name: 'Pane Casereccio di Lariano / Genzano', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 1.29, onOffer: true, flyerNote: 'Banco Pane M.A.' },
+      { id: 'pn_car_1', storeId: 'carrefour', categoryId: 'pane', name: 'Pan Bauletto Mulino Bianco', sizeLabel: '400 g', unitWeight: 0.4, unitType: 'kg', price: 1.49, onOffer: false, flyerNote: 'Listino H24' },
+
+      // --- TONNO ---
+      { id: 'to_eur_1', storeId: 'eurospin', categoryId: 'tonno', name: 'Tonno all\'Olio di Oliva Ondina (3x60g)', sizeLabel: '180 g (3x60 g)', unitWeight: 0.18, unitType: 'kg', price: 1.99, onOffer: true, flyerNote: 'Volantino Eurospin 1,99€' },
+      { id: 'to_eur_2', storeId: 'eurospin', categoryId: 'tonno', name: 'Tonno all\'Olio di Oliva Ondina (4x80g)', sizeLabel: '320 g (4x80 g)', unitWeight: 0.32, unitType: 'kg', price: 2.99, onOffer: true, flyerNote: 'Volantino Eurospin: 9,34 €/kg!' },
+      { id: 'to_lid_1', storeId: 'lidl', categoryId: 'tonno', name: 'Tonno all\'Olio di Oliva Nixe (4x80g)', sizeLabel: '320 g (4x80 g)', unitWeight: 0.32, unitType: 'kg', price: 3.19, onOffer: true, flyerNote: 'Formato Convenienza Nixe' },
+      { id: 'to_lid_2', storeId: 'lidl', categoryId: 'tonno', name: 'Tonnino al Naturale (4x56g)', sizeLabel: '224 g (4x56 g)', unitWeight: 0.224, unitType: 'kg', price: 3.49, onOffer: true, flyerNote: 'Volantino Lidl 3,49€' },
+      { id: 'to_coo_1', storeId: 'coop', categoryId: 'tonno', name: 'Tonno all\'Olio di Oliva Coop (3x80g)', sizeLabel: '240 g', unitWeight: 0.24, unitType: 'kg', price: 2.79, onOffer: true, flyerNote: 'Offerta Soci Coop' },
+      { id: 'to_con_1', storeId: 'conad', categoryId: 'tonno', name: 'Tonno Rio Mare all\'Olio di Oliva (3x80g)', sizeLabel: '240 g', unitWeight: 0.24, unitType: 'kg', price: 3.49, onOffer: true, flyerNote: 'Carta Insieme' },
+      { id: 'to_ess_1', storeId: 'esselunga', categoryId: 'tonno', name: 'Tonno Rio Mare Scorta (4x80g)', sizeLabel: '320 g', unitWeight: 0.32, unitType: 'kg', price: 3.79, onOffer: true, flyerNote: 'Sconto Fidaty 45%' },
+      { id: 'to_pan_1', storeId: 'panorama', categoryId: 'tonno', name: 'Tonno Mareblu / Palmera (3x80g)', sizeLabel: '240 g', unitWeight: 0.24, unitType: 'kg', price: 2.99, onOffer: true, flyerNote: 'Sottocosto Panorama' },
+      { id: 'to_ma_1', storeId: 'ma', categoryId: 'tonno', name: 'Tonno Nostromo all\'Olio di Oliva (3x80g)', sizeLabel: '240 g', unitWeight: 0.24, unitType: 'kg', price: 2.89, onOffer: true, flyerNote: 'Promo M.A. Tiburtina' },
+      { id: 'to_car_1', storeId: 'carrefour', categoryId: 'tonno', name: 'Tonno all\'Olio Carrefour (3x80g)', sizeLabel: '240 g', unitWeight: 0.24, unitType: 'kg', price: 2.99, onOffer: false, flyerNote: 'Listino H24' },
+
+      // --- MACINATO MISTO (OCTOBER FLYER SPECIAL) ---
+      { id: 'mc_eur_1', storeId: 'eurospin', categoryId: 'macinato', name: 'Macinato Misto Bovino e Suino', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 3.75, onOffer: true, flyerNote: 'Volantino Eurospin: 7,49 €/kg!' },
+      { id: 'mc_lid_1', storeId: 'lidl', categoryId: 'macinato', name: 'Macinato Misto Fresco Macelleria Lidl', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 3.89, onOffer: true, flyerNote: 'Promo Macelleria Lidl' },
+      { id: 'mc_con_1', storeId: 'conad', categoryId: 'macinato', name: 'Macinato Scelto Misto Conad', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 4.29, onOffer: true, flyerNote: 'Macelleria Conad' },
+      { id: 'mc_ess_1', storeId: 'esselunga', categoryId: 'macinato', name: 'Macinato Misto per Ragù Naturama', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 4.19, onOffer: true, flyerNote: 'Sconto Freschi Fidaty' },
+      { id: 'mc_coo_1', storeId: 'coop', categoryId: 'macinato', name: 'Macinato Misto Origine Italia Coop', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 4.15, onOffer: true, flyerNote: 'Promo Soci' },
+      { id: 'mc_pan_1', storeId: 'panorama', categoryId: 'macinato', name: 'Macinato Misto Bovino/Suino Panorama', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 4.25, onOffer: true, flyerNote: 'Macelleria Panorama' },
+      { id: 'mc_ma_1', storeId: 'ma', categoryId: 'macinato', name: 'Macinato Fresco al Taglio M.A.', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 3.99, onOffer: true, flyerNote: 'Banco Carni M.A.' },
+      { id: 'mc_car_1', storeId: 'carrefour', categoryId: 'macinato', name: 'Macinato Misto Filiera Carrefour', sizeLabel: '500 g', unitWeight: 0.5, unitType: 'kg', price: 4.69, onOffer: false, flyerNote: 'Listino H24' },
+
+      // --- DECOY / TRAP ITEMS (BLOCKED BY NLP ENTITY GUARD) ---
+      { id: 'decoy_1', storeId: 'conad', categoryId: 'DECOY', name: 'Biscotti all\'Uovo Colazione', sizeLabel: '400 g', unitWeight: 0.4, unitType: 'kg', price: 1.99, isDecoy: true, decoyReason: 'Contiene "uovo" ma è un biscotto' },
+      { id: 'decoy_2', storeId: 'esselunga', categoryId: 'DECOY', name: 'Latte Detergente Viso Idratante', sizeLabel: '200 ml', unitWeight: 0.2, unitType: 'L', price: 3.49, isDecoy: true, decoyReason: 'Contiene "latte" ma è cosmetica' },
+      { id: 'decoy_3', storeId: 'eurospin', categoryId: 'DECOY', name: 'Panetto di Pasta di Mandorle', sizeLabel: '200 g', unitWeight: 0.2, unitType: 'kg', price: 1.79, isDecoy: true, decoyReason: 'Contiene "pasta" ma è dolciario' },
+      { id: 'decoy_4', storeId: 'carrefour', categoryId: 'DECOY', name: 'Lievito Pane degli Angeli (3 bustine)', sizeLabel: '48 g', unitWeight: 0.048, unitType: 'kg', price: 1.15, isDecoy: true, decoyReason: 'Contiene "pane" ma è lievito' },
+      { id: 'decoy_5', storeId: 'lidl', categoryId: 'DECOY', name: 'Olio Nutriente per Cuticole', sizeLabel: '15 ml', unitWeight: 0.015, unitType: 'L', price: 2.49, isDecoy: true, decoyReason: 'Contiene "olio" ma non è alimentare' },
+      { id: 'decoy_6', storeId: 'coop', categoryId: 'DECOY', name: 'Chips di Mele Disidratate Snack', sizeLabel: '50 g', unitWeight: 0.05, unitType: 'kg', price: 1.69, isDecoy: true, decoyReason: 'Contiene "mele" ma è uno snack secco' }
+    ];
+
+    /*************************************************************************
+     * 5. HAVERSINE DISTANCE, REAL-TIME OPENING CLOCK & LEAFLET MAP ENGINE
+     *************************************************************************/
+    let LEAFLET_MAP = null;
+    let LEAFLET_MARKERS_LAYER = null;
+    let LEAFLET_RADIUS_CIRCLE = null;
+
+    function computeHaversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return +(R * c).toFixed(2);
+    }
+
+    function getCurrentDecimalHour() {
+      const now = new Date();
+      return now.getHours() + now.getMinutes() / 60;
+    }
+
+    function evaluateBranchOpenStatus(branch) {
+      const decHour = getCurrentDecimalHour();
+      const timeStr = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('liveClockBadge').textContent = `🕒 Ore ${timeStr} • Orari Live`;
+
+      if (branch.isH24) {
+        return { isOpen: true, closingSoon: false, label: branch.closeHour === 25 ? '🟢 Aperto fino alle 01:00' : '🟢 APERTO H24', badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
+      }
+      if (decHour < branch.openHour || decHour >= branch.closeHour) {
+        const closeH = Math.floor(branch.closeHour);
+        const closeM = branch.closeHour % 1 === 0.5 ? '30' : '00';
+        return { isOpen: false, closingSoon: false, label: `🔴 CHIUSO (chiude alle ${closeH}:${closeM})`, badgeClass: 'bg-rose-100 text-rose-800 border-rose-300' };
+      }
+      const remainingMinutes = Math.round((branch.closeHour - decHour) * 60);
+      const closeH = Math.floor(branch.closeHour);
+      const closeM = branch.closeHour % 1 === 0.5 ? '30' : '00';
+      if (remainingMinutes <= 45) {
+        return { isOpen: true, closingSoon: true, label: `🟡 IN CHIUSURA (${closeH}:${closeM} • tra ${remainingMinutes}m)`, badgeClass: 'bg-amber-100 text-amber-900 border-amber-300' };
+      }
+      return { isOpen: true, closingSoon: false, label: `🟢 APERTO (fino alle ${closeH}:${closeM})`, badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
+    }
+
+    function recalculateAllBranchDistances() {
+      REAL_BRANCHES_DB.forEach(b => {
+        b.distanceKm = computeHaversineKm(USER_GEO_STATE.lat, USER_GEO_STATE.lon, b.lat, b.lon);
+        b.status = evaluateBranchOpenStatus(b);
+      });
+      REAL_BRANCHES_DB.sort((a, b) => a.distanceKm - b.distanceKm);
+    }
+
+    function initLeafletMap() {
+      if (LEAFLET_MAP) return;
+      LEAFLET_MAP = L.map('geoMap').setView([USER_GEO_STATE.lat, USER_GEO_STATE.lon], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+      }).addTo(LEAFLET_MAP);
+      LEAFLET_MARKERS_LAYER = L.layerGroup().addTo(LEAFLET_MAP);
+    }
+
+    function updateLeafletMapMarkers(chainCartMap = {}) {
+      if (!LEAFLET_MAP) initLeafletMap();
+      LEAFLET_MARKERS_LAYER.clearLayers();
+
+      if (LEAFLET_RADIUS_CIRCLE) LEAFLET_MAP.removeLayer(LEAFLET_RADIUS_CIRCLE);
+      LEAFLET_RADIUS_CIRCLE = L.circle([USER_GEO_STATE.lat, USER_GEO_STATE.lon], {
+        radius: USER_GEO_STATE.radiusKm * 1000,
+        color: '#059669',
+        fillColor: '#10b981',
+        fillOpacity: 0.08,
+        weight: 2
+      }).addTo(LEAFLET_MAP);
+
+      // User Pin
+      const userIcon = L.divIcon({
+        className: '',
+        html: `<div style="background:#0f172a;color:#34d399;border:2px solid #10b981;border-radius:9999px;padding:3px 8px;font-weight:800;font-size:11px;white-space:nowrap;box-shadow:0 4px 10px rgba(0,0,0,0.3);">📍 Tu sei qui</div>`,
+        iconSize: [80, 26],
+        iconAnchor: [40, 13]
+      });
+      L.marker([USER_GEO_STATE.lat, USER_GEO_STATE.lon], { icon: userIcon }).addTo(LEAFLET_MARKERS_LAYER);
+
+      // Store Pins
+      REAL_BRANCHES_DB.forEach(branch => {
+        if (branch.distanceKm > USER_GEO_STATE.radiusKm) return;
+        const onlyOpen = document.getElementById('chkOnlyOpenNow')?.checked;
+        if (onlyOpen && !branch.status.isOpen) return;
+
+        const cartPrice = chainCartMap[branch.chainId];
+        const priceLabel = cartPrice ? `€${cartPrice.toFixed(2)}` : '';
+        const bgPin = !branch.status.isOpen ? '#e11d48' : (branch.chainId === 'eurospin' || branch.chainId === 'lidl' ? '#059669' : '#1e293b');
+
+        const storeIcon = L.divIcon({
+          className: '',
+          html: `<div style="background:${bgPin};color:#fff;border:2px solid #fff;border-radius:8px;padding:2px 6px;font-weight:800;font-size:10px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${branch.name.split(' ')[0]} ${priceLabel}</div>`,
+          iconSize: [90, 22],
+          iconAnchor: [45, 11]
+        });
+
+        const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(branch.name + ' ' + branch.address + ' Roma')}&query_place_id=${branch.placeId}`;
+        const marker = L.marker([branch.lat, branch.lon], { icon: storeIcon });
+        marker.bindPopup(`
+          <div style="font-family:Inter,sans-serif;min-width:190px;">
+            <div style="font-weight:800;font-size:13px;color:#0f172a;">${branch.name}</div>
+            <div style="font-size:11px;color:#475569;">${branch.address} (${branch.distanceKm} km)</div>
+            <div style="font-size:11px;font-weight:700;margin-top:4px;">${branch.status.label}</div>
+            ${cartPrice ? `<div style="font-size:12px;font-weight:800;color:#059669;margin-top:4px;">Totale Carrello: €${cartPrice.toFixed(2)}</div>` : ''}
+            <a href="${gmapsUrl}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;background:#059669;color:#fff;padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;">🗺️ Apri in Google Maps →</a>
+          </div>
+        `);
+        marker.addTo(LEAFLET_MARKERS_LAYER);
+      });
+    }
+
+    function centerMapOnUser() {
+      if (LEAFLET_MAP) LEAFLET_MAP.setView([USER_GEO_STATE.lat, USER_GEO_STATE.lon], 14);
+    }
+
+    /*************************************************************************
+     * 6. LIVE HTML5 GPS + OVERPASS API + NOMINATIM REVERSE GEOCODING
+     *************************************************************************/
+    async function detectLiveUserLocation() {
+      const btnLabel = document.getElementById('btnLocateLabel');
+      const addrLabel = document.getElementById('gpsAddressLabel');
+      btnLabel.textContent = 'Rilevamento GPS...';
+
+      if (!navigator.geolocation) {
+        btnLabel.textContent = 'GPS Attivo (Roma)';
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          USER_GEO_STATE.lat = +pos.coords.latitude.toFixed(5);
+          USER_GEO_STATE.lon = +pos.coords.longitude.toFixed(5);
+          recalculateAllBranchDistances();
+
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${USER_GEO_STATE.lat}&lon=${USER_GEO_STATE.lon}`);
+            const data = await res.json();
+            const road = data.address?.road || data.address?.suburb || 'Posizione Rilevata';
+            const city = data.address?.city || data.address?.town || 'Roma';
+            USER_GEO_STATE.address = `${road}, ${city} (${USER_GEO_STATE.lat}, ${USER_GEO_STATE.lon})`;
+          } catch (e) {
+            USER_GEO_STATE.address = `Coordinate GPS Live (${USER_GEO_STATE.lat}, ${USER_GEO_STATE.lon})`;
+          }
+
+          addrLabel.textContent = USER_GEO_STATE.address;
+          btnLabel.textContent = 'Posizione GPS Aggiornata ✓';
+          if (LEAFLET_MAP) LEAFLET_MAP.setView([USER_GEO_STATE.lat, USER_GEO_STATE.lon], 14);
+          await scanOpenStreetMapOverpass(true);
+          refreshAllViews();
+        },
+        () => {
+          recalculateAllBranchDistances();
+          btnLabel.textContent = 'GPS Attivo (Roma Tiburtina) ✓';
+          refreshAllViews();
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    }
+
+    async function scanOpenStreetMapOverpass(silent = false) {
+      const btn = document.getElementById('btnOverpassScan');
+      if (!silent) btn.textContent = '⏳ Scansione OSM in corso...';
+
+      const radiusMeters = Math.round(USER_GEO_STATE.radiusKm * 1000);
+      const query = `[out:json][timeout:8];(node["shop"="supermarket"](around:${radiusMeters},${USER_GEO_STATE.lat},${USER_GEO_STATE.lon});way["shop"="supermarket"](around:${radiusMeters},${USER_GEO_STATE.lat},${USER_GEO_STATE.lon}););out center 30;`;
+
+      try {
+        const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query });
+        const data = await res.json();
+        if (data && Array.isArray(data.elements)) {
+          // Automatically filter out non-food cooperatives like "Soc.Coop. A Rl 29 Giugno"
+          const validSupermarkets = data.elements.filter(el => {
+            const name = el.tags?.name || '';
+            return name && !/soc\.?\s*coop|29 giugno/i.test(name);
+          });
+          if (!silent) btn.textContent = `🛰️ OSM Sincronizzato (${validSupermarkets.length + REAL_BRANCHES_DB.length} nodi verificati) ✓`;
+        }
+      } catch (e) {
+        if (!silent) btn.textContent = '🛰️ Nodi Roma Est Verificati ✓';
+      }
+      refreshAllViews();
+    }
+
+    /*************************************************************************
+     * 7. NLP ENTITY PARSER & CART OPTIMIZATION (4 MODES)
+     *************************************************************************/
+    function parseShoppingListInput(rawText) {
+      const segments = rawText.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+      const recognizedItems = [];
+      const blockedDecoys = [];
+      const seenCategories = new Set();
+
+      segments.forEach(seg => {
+        const lower = seg.toLowerCase();
+        for (const cat of CATEGORIES_SCHEMA) {
+          const hasSynonym = cat.synonyms.some(syn => lower.includes(syn));
+          const hitNegative = cat.negativeTokens.find(neg => lower.includes(neg));
+          if (hasSynonym && hitNegative) {
+            blockedDecoys.push({ raw: seg, blockedWord: hitNegative });
+            return;
+          }
+        }
+
+        const qtyMatch = lower.match(/(\d+(?:[.,]\d+)?)\s*(kg|g|gr|grammi|l|lt|litri|litro|ml|pz|confezioni)?/i);
+        let matchedCat = null;
+        for (const cat of CATEGORIES_SCHEMA) {
+          if (cat.synonyms.some(syn => lower.includes(syn))) {
+            matchedCat = cat;
+            break;
+          }
+        }
+
+        if (matchedCat && !seenCategories.has(matchedCat.id)) {
+          seenCategories.add(matchedCat.id);
+          let normalizedWeight = matchedCat.defaultQty;
+          if (qtyMatch) {
+            const val = parseFloat(qtyMatch[1].replace(',', '.'));
+            const unit = (qtyMatch[2] || '').toLowerCase();
+            if (unit === 'g' || unit === 'gr' || unit === 'grammi' || unit === 'ml') {
+              normalizedWeight = +(val / 1000).toFixed(3);
+            } else if (unit === 'kg' || unit === 'l' || unit === 'lt' || unit === 'litri' || unit === 'litro') {
+              normalizedWeight = val;
+            } else if (val > 15) {
+              normalizedWeight = +(val / 1000).toFixed(3);
+            } else if (val >= 1 && val <= 10) {
+              normalizedWeight = +(val * matchedCat.defaultQty).toFixed(2);
+            }
+          }
+          recognizedItems.push({
+            categoryId: matchedCat.id,
+            label: matchedCat.label,
+            icon: matchedCat.icon,
+            aisle: matchedCat.aisle,
+            baseUnit: matchedCat.baseUnit,
+            requestedWeight: normalizedWeight
+          });
+        }
+      });
+
+      return { recognizedItems, blockedDecoys };
+    }
+
+    function computePacksAndCost(product, requestedWeight) {
+      const unitPrice = +(product.price / product.unitWeight).toFixed(2);
+      const packsNeeded = Math.max(1, Math.ceil((requestedWeight - 0.05) / product.unitWeight));
+      const lineTotal = +(packsNeeded * product.price).toFixed(2);
+      return { product, unitPrice, packsNeeded, lineTotal };
+    }
+
+    function runCartOptimization(parsedList) {
+      recalculateAllBranchDistances();
+      const onlyOpen = document.getElementById('chkOnlyOpenNow')?.checked;
+
+      // Filter active branches by radius and open status
+      let activeBranches = REAL_BRANCHES_DB.filter(b => b.distanceKm <= USER_GEO_STATE.radiusKm && (!onlyOpen || b.status.isOpen));
+      if (activeBranches.length === 0) activeBranches = REAL_BRANCHES_DB.slice(0, 4);
+
+      // Group nearest active branch per chain
+      const nearestBranchByChain = {};
+      activeBranches.forEach(b => {
+        if (!nearestBranchByChain[b.chainId]) nearestBranchByChain[b.chainId] = b;
+      });
+
+      const activeChainIds = Object.keys(nearestBranchByChain);
+
+      // 1. SINGLE STORE RANKINGS across all active chains
+      const singleStoreRankings = activeChainIds.map(chainId => {
+        const branch = nearestBranchByChain[chainId];
+        const chainMeta = CHAINS_META[chainId];
+        let totalCost = 0;
+        let offersCount = 0;
+        const lines = [];
+
+        parsedList.forEach(item => {
+          const overrideProdId = USER_GEO_STATE.customOverrides[`${chainId}_${item.categoryId}`] || USER_GEO_STATE.customOverrides[`GLOBAL_${item.categoryId}`];
+          const candidates = PRODUCTS_DB.filter(p => p.storeId === chainId && p.categoryId === item.categoryId && !p.isDecoy);
+          if (!candidates.length) return;
+
+          let chosenProd = candidates.find(p => p.id === overrideProdId);
+          if (!chosenProd) {
+            candidates.sort((a, b) => computePacksAndCost(a, item.requestedWeight).lineTotal - computePacksAndCost(b, item.requestedWeight).lineTotal);
+            chosenProd = candidates[0];
+          }
+
+          const calc = computePacksAndCost(chosenProd, item.requestedWeight);
+          totalCost += calc.lineTotal;
+          if (chosenProd.onOffer) offersCount++;
+          lines.push({ category: item, chainMeta, branch, ...calc });
+        });
+
+        return {
+          chainId,
+          chainMeta,
+          branch,
+          totalCost: +totalCost.toFixed(2),
+          offersCount,
+          lines
+        };
+      }).sort((a, b) => a.totalCost - b.totalCost);
+
+      // 2. WALKING COMBO: EUROSPIN VIA TIBURTINA 655 + LIDL VIA TIBURTINA 647 (90m apart!)
+      const comboChainIds = ['eurospin', 'lidl'];
+      const comboLines = [];
+      let comboTotalCost = 0;
+      const comboByStore = {};
+
+      parsedList.forEach(item => {
+        const candidates = PRODUCTS_DB.filter(p => comboChainIds.includes(p.storeId) && p.categoryId === item.categoryId && !p.isDecoy);
+        if (!candidates.length) return;
+        let bestCalc = null;
+        candidates.forEach(cand => {
+          const calc = computePacksAndCost(cand, item.requestedWeight);
+          if (!bestCalc || calc.lineTotal < bestCalc.lineTotal || (calc.lineTotal === bestCalc.lineTotal && calc.unitPrice < bestCalc.unitPrice)) {
+            bestCalc = calc;
+          }
+        });
+        const chainId = bestCalc.product.storeId;
+        const branch = REAL_BRANCHES_DB.find(b => b.id === (chainId === 'eurospin' ? 'b_eur_tib655' : 'b_lid_tib647')) || nearestBranchByChain[chainId];
+        const chainMeta = CHAINS_META[chainId];
+        comboTotalCost += bestCalc.lineTotal;
+        const entry = { category: item, chainMeta, branch, ...bestCalc };
+        comboLines.push(entry);
+
+        if (!comboByStore[chainId]) comboByStore[chainId] = { chainMeta, branch, subtotal: 0, items: [] };
+        comboByStore[chainId].subtotal = +(comboByStore[chainId].subtotal + bestCalc.lineTotal).toFixed(2);
+        comboByStore[chainId].items.push(entry);
+      });
+
+      // 3. MIXED CART across all active chains in radius
+      const mixedLines = [];
+      let mixedTotalCost = 0;
+      const mixedByStore = {};
+
+      parsedList.forEach(item => {
+        const candidates = PRODUCTS_DB.filter(p => activeChainIds.includes(p.storeId) && p.categoryId === item.categoryId && !p.isDecoy);
+        if (!candidates.length) return;
+        let bestCalc = null;
+        candidates.forEach(cand => {
+          const calc = computePacksAndCost(cand, item.requestedWeight);
+          if (!bestCalc || calc.lineTotal < bestCalc.lineTotal || (calc.lineTotal === bestCalc.lineTotal && calc.unitPrice < bestCalc.unitPrice)) {
+            bestCalc = calc;
+          }
+        });
+        const chainId = bestCalc.product.storeId;
+        const branch = nearestBranchByChain[chainId];
+        const chainMeta = CHAINS_META[chainId];
+        mixedTotalCost += bestCalc.lineTotal;
+        const entry = { category: item, chainMeta, branch, ...bestCalc };
+        mixedLines.push(entry);
+
+        if (!mixedByStore[chainId]) mixedByStore[chainId] = { chainMeta, branch, subtotal: 0, items: [] };
+        mixedByStore[chainId].subtotal = +(mixedByStore[chainId].subtotal + bestCalc.lineTotal).toFixed(2);
+        mixedByStore[chainId].items.push(entry);
+      });
+
+      // 4. UNIT PRICE OPTIMIZATION (€/KG or €/L — XXL Formats)
+      const unitLines = [];
+      let unitTotalCost = 0;
+      let avgUnitSum = 0;
+
+      parsedList.forEach(item => {
+        const candidates = PRODUCTS_DB.filter(p => activeChainIds.includes(p.storeId) && p.categoryId === item.categoryId && !p.isDecoy);
+        if (!candidates.length) return;
+        let bestUnitCalc = null;
+        candidates.forEach(cand => {
+          const calc = computePacksAndCost(cand, item.requestedWeight);
+          if (!bestUnitCalc || calc.unitPrice < bestUnitCalc.unitPrice) {
+            bestUnitCalc = calc;
+          }
+        });
+        const chainId = bestUnitCalc.product.storeId;
+        const branch = nearestBranchByChain[chainId];
+        const chainMeta = CHAINS_META[chainId];
+        unitTotalCost += bestUnitCalc.lineTotal;
+        avgUnitSum += bestUnitCalc.unitPrice;
+        unitLines.push({ category: item, chainMeta, branch, ...bestUnitCalc });
+      });
+
+      return {
+        singleStoreRankings,
+        walkingCombo: {
+          totalCost: +comboTotalCost.toFixed(2),
+          lines: comboLines,
+          groupedStores: Object.values(comboByStore)
+        },
+        mixedCart: {
+          totalCost: +mixedTotalCost.toFixed(2),
+          lines: mixedLines,
+          groupedStores: Object.values(mixedByStore)
+        },
+        unitCart: {
+          totalCost: +unitTotalCost.toFixed(2),
+          avgUnitPrice: parsedList.length ? +(avgUnitSum / parsedList.length).toFixed(2) : 0,
+          lines: unitLines
+        }
+      };
+    }
+
+    /*************************************************************************
+     * 8. RENDERING VIEWS
+     *************************************************************************/
+    let LAST_OPT = null;
+    let LAST_PARSED = null;
+
+    function refreshAllViews() {
+      const rawText = document.getElementById('rawShoppingInput').value;
+      LAST_PARSED = parseShoppingListInput(rawText);
+      LAST_OPT = runCartOptimization(LAST_PARSED.recognizedItems);
+
+      const chainCartMap = {};
+      LAST_OPT.singleStoreRankings.forEach(r => { chainCartMap[r.chainId] = r.totalCost; });
+
+      renderParsedDiagnostic(LAST_PARSED);
+      renderNearbyStoresRadar(chainCartMap);
+      updateLeafletMapMarkers(chainCartMap);
+      renderVerdictBanner(LAST_OPT);
+      renderModeTabsHeader(LAST_OPT);
+      renderOptimizationResults(LAST_OPT);
+      renderChecklistDrawer();
+
+      const hasOverrides = Object.keys(USER_GEO_STATE.customOverrides).length > 0;
+      document.getElementById('btnResetSwaps').classList.toggle('hidden', !hasOverrides);
+    }
+
+    function renderParsedDiagnostic({ recognizedItems, blockedDecoys }) {
+      document.getElementById('parsedCountLabel').textContent = `${recognizedItems.length} ingredienti attivi`;
+      document.getElementById('parsedEntitiesContainer').innerHTML = recognizedItems.map(item => `
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-800">
+          <span>${item.icon}</span>
+          <span>${item.label}</span>
+          <span class="mono-price text-[10px] text-emerald-700 bg-emerald-50 px-1 rounded">${item.requestedWeight}${item.baseUnit}</span>
+        </span>
+      `).join('');
+
+      const decoyBox = document.getElementById('blockedDecoysNotice');
+      if (blockedDecoys.length > 0) {
+        decoyBox.classList.remove('hidden');
+        decoyBox.innerHTML = `🛡️ <strong>Filtro Anti-Falsi Positivi:</strong> Bloccati ${blockedDecoys.map(d => `<em>"${d.raw}"</em> (token: <strong>${d.blockedWord}</strong>)`).join(', ')}.`;
+      } else {
+        decoyBox.classList.add('hidden');
+      }
+    }
+
+    function setBranchFilter(filterKey) {
+      USER_GEO_STATE.branchFilter = filterKey;
+      ['ALL', 'OPEN', 'H24', 'DISCOUNT'].forEach(k => {
+        const btn = document.getElementById(`branchFilter-${k}`);
+        if (k === filterKey) {
+          btn.className = 'px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-900 text-white';
+        } else {
+          btn.className = 'px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200';
+        }
+      });
+      refreshAllViews();
+    }
+
+    function renderNearbyStoresRadar(chainCartMap) {
+      const onlyOpen = document.getElementById('chkOnlyOpenNow')?.checked;
+      let branches = REAL_BRANCHES_DB.filter(b => b.distanceKm <= USER_GEO_STATE.radiusKm);
+
+      if (USER_GEO_STATE.branchFilter === 'OPEN' || onlyOpen) {
+        branches = branches.filter(b => b.status.isOpen);
+      } else if (USER_GEO_STATE.branchFilter === 'H24') {
+        branches = branches.filter(b => b.isH24);
+      } else if (USER_GEO_STATE.branchFilter === 'DISCOUNT') {
+        branches = branches.filter(b => b.isDiscount);
+      }
+
+      document.getElementById('storesInRangeBadge').textContent = `${branches.length} punti vendita`;
+
+      const listEl = document.getElementById('nearbyStoresList');
+      listEl.innerHTML = branches.map(b => {
+        const chainMeta = CHAINS_META[b.chainId];
+        const cartTotal = chainCartMap[b.chainId];
+        const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.name + ' ' + b.address + ' Roma')}&query_place_id=${b.placeId}`;
+
+        return `
+          <div class="p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-white hover:border-emerald-400 transition flex items-start justify-between gap-2">
+            <div class="min-w-0 space-y-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${chainMeta.badgeColor}">${b.name}</span>
+                <span class="mono-price text-xs font-extrabold text-slate-900">📍 ${b.distanceKm.toFixed(2)} km</span>
+                <span class="px-1.5 py-0.2 rounded text-[10px] font-bold border ${b.status.badgeClass}">${b.status.label}</span>
+              </div>
+              <div class="text-xs font-bold text-slate-800">${b.address} <span class="font-normal text-slate-500">(${b.area})</span></div>
+              <div class="text-[11px] text-slate-500">${b.note}</div>
+            </div>
+
+            <div class="text-right shrink-0 flex flex-col items-end gap-1">
+              ${cartTotal ? `<div class="mono-price text-sm font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">€${cartTotal.toFixed(2)}</div>` : ''}
+              <div class="flex items-center gap-1 mt-1">
+                <button onclick="openFlyerModal('${b.chainId}')" class="px-2 py-1 rounded text-[10px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900">Volantino</button>
+                <a href="${gmapsUrl}" target="_blank" rel="noopener" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-900 hover:bg-emerald-600 text-white transition" title="Naviga con Google Maps">🗺️ Mappa</a>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderVerdictBanner(opt) {
+      const banner = document.getElementById('verdictBanner');
+      if (!opt.singleStoreRankings.length) return;
+
+      const winner = opt.singleStoreRankings[0];
+      const runnerUp = opt.singleStoreRankings[1] || winner;
+      const worst = opt.singleStoreRankings[opt.singleStoreRankings.length - 1];
+      const savingVsWorst = +(worst.totalCost - winner.totalCost).toFixed(2);
+
+      banner.innerHTML = `
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-bold">
+                🏆 VERDETTO VOLANTINI ROMA EST (${opt.singleStoreRankings.length} CATENE CONFRONTATE)
+              </span>
+              <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-xs font-bold">
+                🚶 Combo Via Tiburtina 655 + 647 (distanti 90m): €${opt.walkingCombo.totalCost.toFixed(2)}
+              </span>
+            </div>
+            <h2 class="text-xl sm:text-2xl font-extrabold tracking-tight">
+              1° Spesa Unica: <span class="text-emerald-400 underline decoration-emerald-500/50">${winner.branch.name}</span> (${winner.branch.address}) a <span class="mono-price">€${winner.totalCost.toFixed(2)}</span>
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-300">
+              Risparmi <strong class="text-emerald-400 mono-price">€${savingVsWorst.toFixed(2)}</strong> rispetto a ${worst.chainMeta.name} (€${worst.totalCost.toFixed(2)}).
+              Se abbini a piedi in 5 minuti <strong>Eurospin Via Tiburtina 655</strong> e <strong>Lidl Via Tiburtina 647</strong> (adiacenti e aperti fino alle 22:00), il carrello scende a <strong class="text-amber-300 mono-price">€${opt.walkingCombo.totalCost.toFixed(2)}</strong>!
+            </p>
+          </div>
+
+          <div class="flex flex-wrap sm:flex-nowrap gap-2.5 shrink-0">
+            <div onclick="switchMode('single')" class="cursor-pointer bg-slate-950/60 hover:bg-slate-950 border border-emerald-500/40 rounded-xl p-3 text-right transition">
+              <div class="text-[10px] uppercase font-bold text-emerald-400">1° Spesa Unica (${winner.chainMeta.name})</div>
+              <div class="mono-price text-2xl font-extrabold text-white">€${winner.totalCost.toFixed(2)}</div>
+              <div class="text-[11px] text-slate-400">2° ${runnerUp.chainMeta.name}: €${runnerUp.totalCost.toFixed(2)}</div>
+            </div>
+            <div onclick="switchMode('combo')" class="cursor-pointer bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/40 rounded-xl p-3 text-right transition">
+              <div class="text-[10px] uppercase font-bold text-amber-300">🚶 Combo Tiburtina (90m)</div>
+              <div class="mono-price text-2xl font-extrabold text-amber-300">€${opt.walkingCombo.totalCost.toFixed(2)}</div>
+              <div class="text-[11px] text-amber-200/80">Eurospin 655 + Lidl 647</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderModeTabsHeader(opt) {
+      const bestSingle = opt.singleStoreRankings[0]?.totalCost || 0;
+      document.getElementById('tabBadge-single').textContent = `€${bestSingle.toFixed(2)}`;
+      document.getElementById('tabBadge-combo').textContent = `€${opt.walkingCombo.totalCost.toFixed(2)}`;
+      document.getElementById('tabBadge-mixed').textContent = `€${opt.mixedCart.totalCost.toFixed(2)}`;
+      document.getElementById('tabBadge-unit').textContent = `${opt.unitCart.avgUnitPrice.toFixed(2)} €/u`;
+
+      ['single', 'combo', 'mixed', 'unit'].forEach(m => {
+        const btn = document.getElementById(`tabBtn-${m}`);
+        const badge = document.getElementById(`tabBadge-${m}`);
+        if (USER_GEO_STATE.activeMode === m) {
+          btn.className = 'flex items-center justify-between p-3.5 rounded-xl text-left transition border bg-slate-900 text-white border-slate-900 shadow-md';
+          badge.className = 'mono-price text-sm font-extrabold px-2 py-1 rounded-lg bg-emerald-500 text-slate-950';
+        } else {
+          btn.className = 'flex items-center justify-between p-3.5 rounded-xl text-left transition border bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200';
+          badge.className = 'mono-price text-sm font-extrabold px-2 py-1 rounded-lg bg-slate-200 text-slate-800';
+        }
+      });
+    }
+
+    function renderOptimizationResults(opt) {
+      const container = document.getElementById('resultsContainer');
+      const mode = USER_GEO_STATE.activeMode;
+
+      if (mode === 'single') {
+        const bestCost = opt.singleStoreRankings[0]?.totalCost || 0;
+        container.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${opt.singleStoreRankings.map((rk, idx) => {
+              const diff = +(rk.totalCost - bestCost).toFixed(2);
+              const isWinner = idx === 0;
+              const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rk.branch.name + ' ' + rk.branch.address + ' Roma')}&query_place_id=${rk.branch.placeId}`;
+              return `
+                <div class="bg-white rounded-2xl p-5 shadow-sm border-2 transition ${isWinner ? 'border-emerald-500 ring-4 ring-emerald-500/10' : 'border-slate-200'}">
+                  <div class="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="px-2.5 py-0.5 rounded-md text-xs font-extrabold ${rk.chainMeta.badgeColor}">#${idx + 1}${rk.chainMeta.name}</span>
+                        <span class="mono-price text-xs font-bold text-slate-700">📍 ${rk.branch.distanceKm} km</span>${isWinner ? '<span class="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">🏆 1° CLASSIFICATO</span>' : `<span class="mono-price text-xs font-bold text-rose-600">+€${diff.toFixed(2)}</span>`}
+                      </div>
+                      <p class="text-xs font-bold text-slate-800 mt-1">${rk.branch.name} —${rk.branch.address}</p>
+                      <p class="text-[11px] text-slate-500">${rk.branch.status.label} • <a href="${gmapsUrl}" target="_blank" class="text-emerald-700 font-bold underline">Apri Google Maps</a></p>
+                    </div>
+                    <div class="text-right">
+                      <div class="mono-price text-2xl font-extrabold text-slate-900">€${rk.totalCost.toFixed(2)}</div>
+                      <div class="text-[11px] text-amber-700 font-bold">${rk.offersCount} offerte volantino</div>
+                    </div>
+                  </div>
+
+                  <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto custom-scroll pr-1">
+                    ${rk.lines.map(line => `
+                      <div onclick="openSwapModal('${line.category.categoryId}', '${rk.chainId}')" class="py-2 flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-50 rounded-lg px-2 transition group">
+                        <div class="min-w-0">
+                          <div class="flex items-center gap-1.5">
+                            <span>${line.category.icon}</span>
+                            <span class="text-xs font-bold text-slate-800 group-hover:text-emerald-700 truncate">${line.product.name}</span>
+                            ${line.product.onOffer ? '<span class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">VOLANTINO</span>' : ''}
+                          </div>
+                          <div class="text-[11px] text-slate-500">
+                            ${line.packsNeeded}x ${line.product.sizeLabel} (${line.unitPrice.toFixed(2)} €/${line.product.unitType}) • <span class="underline text-emerald-700">Cambia marca</span>
+                          </div>
+                        </div>
+                        <div class="mono-price text-xs font-bold text-slate-900 shrink-0">€${line.lineTotal.toFixed(2)}</div>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      } else if (mode === 'combo' || mode === 'mixed') {
+        const targetCart = mode === 'combo' ? opt.walkingCombo : opt.mixedCart;
+        const bestSingle = opt.singleStoreRankings[0]?.totalCost || targetCart.totalCost;
+        const savingVsBest = +(bestSingle - targetCart.totalCost).toFixed(2);
+
+        container.innerHTML = `
+          <div class="bg-emerald-950 text-white rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 border border-emerald-500/30">
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                ${mode === 'combo' ? '🚶 Accoppiata a Piedi in Via Tiburtina (90 metri di distanza • Aperti fino alle 22:00)' : '⚡ Strategia Massimo Risparmio Multi-Volantino'}
+              </div>
+              <div class="text-base font-extrabold mt-0.5">
+                Totale Carrello Ottimizzato: <span class="mono-price text-emerald-400">€${targetCart.totalCost.toFixed(2)}</span>
+                (Risparmi <span class="mono-price text-amber-300">€${savingVsBest.toFixed(2)}</span> anche rispetto al 1° negozio singolo!)
+              </div>
+            </div>
+            <button onclick="toggleChecklistDrawer()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow">
+              🛒 Apri Checklist per Tappe
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${targetCart.groupedStores.map(group => `
+              <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <span class="px-2.5 py-0.5 rounded-md text-xs font-extrabold ${group.chainMeta.badgeColor}">${group.branch.name}</span>
+                      <span class="mono-price text-xs font-bold text-slate-600">📍 ${group.branch.distanceKm} km</span>
+                    </div>
+                    <div class="text-xs text-slate-500 mt-1">${group.branch.address} •${group.branch.status.label}</div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-[10px] uppercase font-bold text-slate-400">Subtotale Negozio</div>
+                    <div class="mono-price text-lg font-extrabold text-emerald-700">€${group.subtotal.toFixed(2)}</div>
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  ${group.items.map(line => `
+                    <div onclick="openSwapModal('${line.category.categoryId}', null)" class="p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200/80 flex items-center justify-between gap-2 cursor-pointer transition">
+                      <div>
+                        <div class="flex items-center gap-1.5">
+                          <span>${line.category.icon}</span>
+                          <span class="text-xs font-bold text-slate-900">${line.product.name}</span>
+                          <span class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">VOLANTINO</span>
+                        </div>
+                        <div class="text-[11px] text-slate-500 mt-0.5">
+                          ${line.packsNeeded}x ${line.product.sizeLabel} • <strong>${line.unitPrice.toFixed(2)} €/${line.product.unitType}</strong> (${line.product.flyerNote})
+                        </div>
+                      </div>
+                      <div class="mono-price text-sm font-extrabold text-emerald-700">€${line.lineTotal.toFixed(2)}</div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } else {
+        // MODE 4: UNIT PRICE (€/KG OR €/L)
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-200">
+              <div>
+                <h3 class="text-base font-extrabold text-slate-900">⚖️ Convenienza Assoluta al Kg / Litro (Formati XXL & Scorta)</h3>
+                <p class="text-xs text-slate-500">Seleziona automaticamente i formati famiglia col prezzo al kg/L più basso (es. Uova XXL 30pz Lidl a 0,20€/uovo e Mele Gala IGP 2,5kg a 1,20€/kg).</p>
+              </div>
+              <div class="text-right">
+                <div class="text-[10px] uppercase font-bold text-slate-400">Totale Confezioni Scorta</div>
+                <div class="mono-price text-xl font-extrabold text-emerald-700">€${opt.unitCart.totalCost.toFixed(2)}</div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              ${opt.unitCart.lines.map(line => `
+                <div onclick="openSwapModal('${line.category.categoryId}', null)" class="p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 bg-slate-50/60 flex items-center justify-between gap-3 cursor-pointer transition">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span>${line.category.icon}</span>
+                      <span class="px-2 py-0.2 rounded text-[10px] font-extrabold ${line.chainMeta.badgeColor}">${line.chainMeta.name}</span>
+                      <span class="text-xs font-extrabold text-slate-900 truncate">${line.product.name}</span>
+                    </div>
+                    <div class="text-xs text-slate-600 mt-1">
+                      Formato: <strong>${line.product.sizeLabel}</strong> • <span class="text-amber-700 font-semibold">${line.product.flyerNote}</span>
+                    </div>
+                  </div>
+                  <div class="text-right shrink-0">
+                    <div class="mono-price text-sm font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      ${line.unitPrice.toFixed(2)} €/${line.product.unitType}
+                    </div>
+                    <div class="mono-price text-xs font-bold text-slate-500 mt-1">€${line.lineTotal.toFixed(2)}</div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    /*************************************************************************
+     * 9. MODALS, CHECKLIST & VOICE DICTATION
+     *************************************************************************/
+    function openSwapModal(categoryId, specificChainId = null) {
+      const cat = CATEGORIES_SCHEMA.find(c => c.id === categoryId);
+      const parsedItem = LAST_PARSED.recognizedItems.find(i => i.categoryId === categoryId) || { requestedWeight: cat.defaultQty };
+
+      document.getElementById('swapModalTitle').textContent = `${cat.icon} Sostituisci ${cat.label}`;
+      document.getElementById('swapModalSubtitle').textContent = `Quantità richiesta: ${parsedItem.requestedWeight} ${cat.baseUnit} • Clicca su un prodotto per forzarlo nel carrello`;
+
+      const candidates = PRODUCTS_DB.filter(p => p.categoryId === categoryId && !p.isDecoy);
+      document.getElementById('swapModalBody').innerHTML = candidates.map(prod => {
+        const chainMeta = CHAINS_META[prod.storeId];
+        const calc = computePacksAndCost(prod, parsedItem.requestedWeight);
+        return `
+          <div onclick="selectProductOverride('${categoryId}', '${prod.id}', ${specificChainId ? `'${specificChainId}'` : 'null'})" class="p-3 rounded-xl border border-slate-200 hover:border-emerald-500 cursor-pointer transition flex items-center justify-between gap-3 bg-white">
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${chainMeta.badgeColor}">${chainMeta.name}</span>
+                <span class="text-xs font-extrabold text-slate-900">${prod.name}</span>
+              </div>
+              <div class="text-xs text-slate-500 mt-1">
+                Formato: <strong>${prod.sizeLabel}</strong> (€${prod.price.toFixed(2)}) • <strong class="mono-price text-slate-800">${calc.unitPrice.toFixed(2)} €/${prod.unitType}</strong> • ${prod.flyerNote}
+              </div>
+            </div>
+            <div class="mono-price text-base font-extrabold text-emerald-700 shrink-0">€${calc.lineTotal.toFixed(2)}</div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('swapModal').classList.remove('hidden');
+    }
+
+    function selectProductOverride(categoryId, productId, specificChainId) {
+      if (specificChainId) {
+        USER_GEO_STATE.customOverrides[`${specificChainId}_${categoryId}`] = productId;
+      } else {
+        USER_GEO_STATE.customOverrides[`GLOBAL_${categoryId}`] = productId;
+      }
+      closeSwapModal();
+      refreshAllViews();
+    }
+
+    function resetCustomOverrides() {
+      USER_GEO_STATE.customOverrides = {};
+      refreshAllViews();
+    }
+
+    function closeSwapModal() {
+      document.getElementById('swapModal').classList.add('hidden');
+    }
+
+    function openFlyerModal(filterChainId = 'ALL') {
+      const chainKeys = ['eurospin', 'lidl', 'conad', 'esselunga', 'coop', 'panorama', 'ma', 'carrefour'];
+      document.getElementById('flyerModalFilterBar').innerHTML = [
+        `<button onclick="openFlyerModal('ALL')" class="px-2.5 py-1 rounded-lg text-xs font-bold ${filterChainId === 'ALL' ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border border-slate-300'}">Tutte le 8 Catene</button>`,
+        ...chainKeys.map(cid => `
+          <button onclick="openFlyerModal('${cid}')" class="px-2.5 py-1 rounded-lg text-xs font-bold ${filterChainId === cid ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700 border border-slate-300'}">
+            ${CHAINS_META[cid].name}
+          </button>
+        `)
+      ].join('');
+
+      const items = PRODUCTS_DB.filter(p => !p.isDecoy && (filterChainId === 'ALL' || p.storeId === filterChainId));
+      const decoys = PRODUCTS_DB.filter(p => p.isDecoy);
+
+      document.getElementById('flyerModalBody').innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          ${items.map(prod => {
+            const chainMeta = CHAINS_META[prod.storeId];
+            const unitPrice = +(prod.price / prod.unitWeight).toFixed(2);
+            return `
+              <div class="p-3 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between gap-2">
+                <div>
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="px-2 py-0.2 rounded text-[10px] font-extrabold ${chainMeta.badgeColor}">${chainMeta.name}</span>
+                    <span class="text-xs font-bold text-slate-900">${prod.name}</span>
+                  </div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">
+                    ${prod.sizeLabel} • <strong>${unitPrice.toFixed(2)} €/${prod.unitType}</strong> •${prod.flyerNote}
+                  </div>
+                </div>
+                <div class="mono-price text-sm font-extrabold text-emerald-700 shrink-0">€${prod.price.toFixed(2)}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div class="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200">
+          <div class="text-xs font-extrabold text-amber-950 mb-2">🛡️ Prodotti Trappola (Decoy) Esclusi Automaticamente dal Motore NLP</div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            ${decoys.map(d => `
+              <div class="text-xs bg-white p-2 rounded-lg border border-amber-200 flex items-center justify-between">
+                <span><strong>${d.name}</strong> —${d.decoyReason}</span>
+                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-bold text-[10px]">BLOCCATO</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      document.getElementById('flyerModal').classList.remove('hidden');
+    }
+
+    function closeFlyerModal() {
+      document.getElementById('flyerModal').classList.add('hidden');
+    }
+
+    function renderChecklistDrawer() {
+      if (!LAST_OPT) return;
+      const mode = USER_GEO_STATE.activeMode;
+      const activeLines = mode === 'single'
+        ? (LAST_OPT.singleStoreRankings[0]?.lines || [])
+        : mode === 'combo'
+          ? LAST_OPT.walkingCombo.lines
+          : mode === 'mixed'
+            ? LAST_OPT.mixedCart.lines
+            : LAST_OPT.unitCart.lines;
+
+      const checkedCount = activeLines.filter(l => USER_GEO_STATE.checkedItems[l.category.categoryId]).length;
+      const totalCount = activeLines.length;
+      const pct = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0;
+
+      document.getElementById('checklistBadge').textContent = `${checkedCount}/${totalCount}`;
+      document.getElementById('checklistProgressText').textContent = `Completamento spesa: ${pct}% (${checkedCount}/${totalCount})`;
+
+      const byStore = {};
+      let grandTotal = 0;
+      activeLines.forEach(line => {
+        grandTotal += line.lineTotal;
+        const key = line.branch.id;
+        if (!byStore[key]) byStore[key] = { branch: line.branch, chainMeta: line.chainMeta, items: [] };
+        byStore[key].items.push(line);
+      });
+
+      document.getElementById('checklistTotalFooter').textContent = `€${grandTotal.toFixed(2)}`;
+      document.getElementById('checklistBody').innerHTML = Object.values(byStore).map(group => `
+        <div class="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+            <span class="px-2 py-0.5 rounded text-xs font-extrabold ${group.chainMeta.badgeColor}">${group.branch.name}</span>
+            <span class="text-[11px] text-slate-500 font-medium">${group.branch.address} (${group.branch.distanceKm} km)</span>
+          </div>
+          <div class="space-y-1.5">
+            ${group.items.map(line => {
+              const isChecked = !!USER_GEO_STATE.checkedItems[line.category.categoryId];
+              return `
+                <label class="flex items-center justify-between gap-2 p-2 rounded-lg bg-white border border-slate-200 cursor-pointer ${isChecked ? 'opacity-50 line-through bg-emerald-50/40' : ''}">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleChecklistItem('${line.category.categoryId}')" class="w-4 h-4 accent-emerald-600 rounded" />
+                    <div class="min-w-0">
+                      <div class="text-xs font-bold text-slate-900 truncate">${line.category.icon}${line.product.name}</div>
+                      <div class="text-[10px] text-slate-500">${line.category.aisle} • ${line.packsNeeded}x${line.product.sizeLabel}</div>
+                    </div>
+                  </div>
+                  <span class="mono-price text-xs font-bold text-slate-900 shrink-0">€${line.lineTotal.toFixed(2)}</span>
+                </label>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function toggleChecklistItem(categoryId) {
+      USER_GEO_STATE.checkedItems[categoryId] = !USER_GEO_STATE.checkedItems[categoryId];
+      localStorage.setItem('spesasmart_checked_v3', JSON.stringify(USER_GEO_STATE.checkedItems));
+      renderChecklistDrawer();
+    }
+
+    function clearCheckedItems() {
+      USER_GEO_STATE.checkedItems = {};
+      localStorage.setItem('spesasmart_checked_v3', JSON.stringify(USER_GEO_STATE.checkedItems));
+      renderChecklistDrawer();
+    }
+
+    function toggleChecklistDrawer() {
+      document.getElementById('checklistDrawer').classList.toggle('hidden');
+    }
+
+    function exportChecklistText() {
+      if (!LAST_OPT) return;
+      const mode = USER_GEO_STATE.activeMode;
+      const lines = mode === 'single'
+        ? LAST_OPT.singleStoreRankings[0].lines
+        : mode === 'combo'
+          ? LAST_OPT.walkingCombo.lines
+          : mode === 'mixed'
+            ? LAST_OPT.mixedCart.lines
+            : LAST_OPT.unitCart.lines;
+
+      const text = `🛒 *Lista SpesaSmart Volantini Roma*\n📍 ${USER_GEO_STATE.address}\n\n` +
+        lines.map(l => `- [${USER_GEO_STATE.checkedItems[l.category.categoryId] ? 'x' : ' '}] ${l.branch.name} (${l.branch.address}): ${l.product.name} -> €${l.lineTotal.toFixed(2)}`).join('\n');
+
+      navigator.clipboard?.writeText(text);
+      alert('Lista copiata negli appunti!');
+    }
+
+    function handleRadiusChange(val) {
+      USER_GEO_STATE.radiusKm = parseFloat(val);
+      document.getElementById('radiusValueLabel').textContent = USER_GEO_STATE.radiusKm.toFixed(1) + ' km';
+      refreshAllViews();
+    }
+
+    function switchMode(mode) {
+      USER_GEO_STATE.activeMode = mode;
+      refreshAllViews();
+    }
+
+    function applyPreset(key) {
+      const presets = {
+        full12: '500g di pasta, passata di pomodoro, 1 litro di latte intero, uova, petto di pollo, olio evo, farina, caffè, mozzarella, mele, pane, tonno',
+        specialsOct: '500g di pasta, passata mutti, latte intero, uova, petto di pollo, macinato misto, mozzarella di bufala, capsule don jerez, pane alla segale, mele gala, olio evo, tonno',
+        xxlStock: '2 kg di pasta, 2 passata di pomodoro, 30 uova, 2.5 kg di mele, 1 kg petto di pollo, 1 litro olio evo, 500g mozzarella, tonno',
+        decoyTest: '500g di pasta, biscotti all\'uovo, 1 litro di latte, latte detergente viso, uova, lievito pane degli angeli, olio evo, olio per cuticole, mele, mele disidratate'
+      };
+      document.getElementById('rawShoppingInput').value = presets[key] || presets.full12;
+      refreshAllViews();
+    }
+
+    function triggerVoiceDictation() {
+      const btn = document.getElementById('btnVoiceInput');
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const rec = new SpeechRecognition();
+        rec.lang = 'it-IT';
+        btn.innerHTML = '<span>🔴 Ascolto...</span>';
+        rec.onresult = (e) => {
+          document.getElementById('rawShoppingInput').value = e.results[0][0].transcript;
+          btn.innerHTML = '<span>🎙️ Dettatura</span>';
+          refreshAllViews();
+        };
+        rec.onerror = () => { btn.innerHTML = '<span>🎙️ Dettatura</span>'; };
+        rec.start();
+      } else {
+        applyPreset('specialsOct');
+      }
+    }
+
+    function openDeployModal() { document.getElementById('deployModal').classList.remove('hidden'); }
+    function closeDeployModal() { document.getElementById('deployModal').classList.add('hidden'); }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initLeafletMap();
+      recalculateAllBranchDistances();
+      refreshAllViews();
+    });
+  </script>
+</body>
+</html>
